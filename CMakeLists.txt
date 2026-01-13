@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(kscreenlocker)
 set(CMAKE_C_STANDARD 99)
-set(PROJECT_VERSION "6.6.5")
+set(PROJECT_VERSION "6.6.80")
 set(PROJECT_VERSION_MAJOR 6)
 
 set(PROJECT_DEP_VERSION "6.6.5")
@@ -300,3 +300,4 @@ endif()
 ki18n_install(po)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
+
