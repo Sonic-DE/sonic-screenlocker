@@ -5,14 +5,14 @@
 # Julia Dronova <juliette.tux@gmail.com>, 2013.
 # Alexander Potashev <aspotashev@gmail.com>, 2014, 2015, 2016.
 # SPDX-FileCopyrightText: 2024 Olesya Gerasimenko <translation-team@basealt.ru>
-# SPDX-FileCopyrightText: 2025-2026 Alexander Yavorsky <kekcuha@gmail.com>
+# SPDX-FileCopyrightText: 2025 Alexander Yavorsky <kekcuha@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-05-13 00:47+0000\n"
-"PO-Revision-Date: 2026-06-18 18:17+0200\n"
-"Last-Translator: Alexander Yavorskiy <kekcuha@gmail.com>\n"
+"POT-Creation-Date: 2026-02-03 00:48+0000\n"
+"PO-Revision-Date: 2025-08-22 18:47+0300\n"
+"Last-Translator: Alexander Yavorsky <kekcuha@gmail.com>\n"
 "Language-Team: Russian <kde-russian@lists.kde.ru>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -20,41 +20,37 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=4; plural=n==1 ? 3 : n%10==1 && n%100!=11 ? 0 : n"
 "%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Lokalize 26.04.2\n"
+"X-Generator: Lokalize 25.08.0\n"
 
-#: fallbacktheme/Greeter.qml:59
+#: fallbacktheme/Greeter.qml:58
 msgid "Warning: Caps Lock on"
 msgstr "Внимание: нажата клавиша Caps Lock"
 
-#: fallbacktheme/Greeter.qml:75
+#: fallbacktheme/Greeter.qml:74
 msgid "The session is locked"
 msgstr "Сеанс заблокирован"
 
-#: fallbacktheme/Greeter.qml:76
+#: fallbacktheme/Greeter.qml:75
 msgid "The session has been locked by %1"
 msgstr "Сеанс заблокирован пользователем %1"
 
-#: fallbacktheme/Greeter.qml:83
-msgid "Password"
-msgstr "Пароль"
-
-#: fallbacktheme/Greeter.qml:101
+#: fallbacktheme/Greeter.qml:99
 msgid "(or place your fingerprint on the reader)"
 msgstr "(или используйте считыватель отпечатка пальцев)"
 
-#: fallbacktheme/Greeter.qml:107
+#: fallbacktheme/Greeter.qml:105
 msgid "(or use your smartcard)"
 msgstr "(или используйте смарт-карту)"
 
-#: fallbacktheme/Greeter.qml:116
+#: fallbacktheme/Greeter.qml:114
 msgid "&Switch Users"
 msgstr "&Переключить пользователя"
 
-#: fallbacktheme/Greeter.qml:123
+#: fallbacktheme/Greeter.qml:121
 msgid "Un&lock"
 msgstr "Раз&блокировать"
 
-#: fallbacktheme/Greeter.qml:135
+#: fallbacktheme/Greeter.qml:133
 msgid "Unlocking failed"
 msgstr "Ошибка разблокировки"
 
