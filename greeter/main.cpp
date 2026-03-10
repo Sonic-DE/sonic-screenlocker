@@ -81,16 +81,12 @@ int main(int argc, char *argv[])
 
     // explicitly disable input methods on x11 as it makes it impossible to unlock, see BUG 306932
     // but explicitly set on screen keyboard such as maliit is allowed
-    // on wayland, let the compositor take care of the input method
-    if (!qEnvironmentVariableIsSet("WAYLAND_DISPLAY") && !qEnvironmentVariableIsSet("WAYLAND_SOCKET")
-        && qgetenv("QT_IM_MODULE") != QByteArrayLiteral("maliit")) {
+    if (qgetenv("QT_IM_MODULE") != QByteArrayLiteral("maliit")) {
         qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
     }
 
     // Suppresses modal warnings about unwritable configuration files which may render the system inaccessible
     qputenv("KDE_HOME_READONLY", "1");
-    // Kwin will re-lock if it restarts, reconnecting would leave us with two greeters but only one functional
-    qunsetenv("QT_WAYLAND_RECONNECT");
     // Disable QML caching to prevent cache corruption in full or near-full disk scenarios.
     // https://bugs.kde.org/show_bug.cgi?id=471952
     // https://bugreports.qt.io/browse/QTBUG-117130
@@ -138,14 +134,11 @@ int main(int argc, char *argv[])
                                        QStringLiteral("0"));
     QCommandLineOption nolockOption(QStringLiteral("nolock"), i18n("Don't show any lock user interface."));
 
-    QCommandLineOption waylandFdOption(QStringLiteral("ksldfd"), i18n("File descriptor for connecting to ksld."), QStringLiteral("fd"));
-
     parser.addOption(testingOption);
     parser.addOption(shellOption);
     parser.addOption(immediateLockOption);
     parser.addOption(graceTimeOption);
     parser.addOption(nolockOption);
-    parser.addOption(waylandFdOption);
     parser.process(app);
 
     if (parser.isSet(testingOption)) {
@@ -177,14 +170,6 @@ int main(int argc, char *argv[])
     int graceTime = parser.value(graceTimeOption).toInt(&ok);
     if (ok) {
         app.setGraceTime(graceTime);
-    }
-
-    if (parser.isSet(waylandFdOption)) {
-        ok = false;
-        const int fd = parser.value(waylandFdOption).toInt(&ok);
-        if (ok) {
-            app.setKsldSocket(fd);
-        }
     }
 
     app.initialViewSetup();

@@ -44,7 +44,6 @@ enum class EstablishLock {
 QString establishLockToString(EstablishLock establishLock);
 
 class AbstractLocker;
-class WaylandServer;
 
 /**
  * @class KSldApp
@@ -120,13 +119,6 @@ public:
      * @return true if the application is in the grace time, false otherwise.
      */
     bool isGraceTime() const;
-
-    /**
-     * @brief Sets the Wayland file descriptor.
-     *
-     * @param fd The Wayland file descriptor to set.
-     */
-    void setWaylandFd(int fd);
 
     /**
      * @brief Sets the environment for the greeter process.
@@ -307,7 +299,6 @@ private:
      *
      * This function starts the lock process based on the given EstablishLock parameter.
      * It sets up the necessary environment variables and command line arguments for the lock process.
-     * If the Wayland server fails to start, an error is emitted and the function returns.
      *
      * @param establishLock The type of lock to establish (eg. immediate or delayed).
      */
@@ -359,11 +350,6 @@ private:
      * The lock window used to display the lock screen.
      **/
     AbstractLocker *m_lockWindow;
-
-    /**
-     * The Wayland server instance used by the lock window.
-     **/
-    WaylandServer *m_waylandServer;
 
     /**
      * Timer to measure how long the screen is locked.
@@ -421,16 +407,6 @@ private:
     bool m_forceSoftwareRendering = false;
 
     /**
-     * @brief Whether the application is running on X11.
-     */
-    bool m_isX11;
-
-    /**
-     * @brief Whether the application is running on Wayland.
-     */
-    bool m_isWayland;
-
-    /**
      * @brief Counter for tracking the number of times the greeter has crashed.
      */
     int m_greeterCrashedCounter = 0;
@@ -453,14 +429,6 @@ private:
      * as a screen saver.
      **/
     bool m_requirePassword = true;
-
-    /**
-     * @brief The file descriptor for the Wayland connection.
-     *
-     * This file descriptor is used to establish the Wayland connection for the
-     * lock window.
-     */
-    int m_waylandFd = -1;
 
     // for auto tests
     friend KSldTest;

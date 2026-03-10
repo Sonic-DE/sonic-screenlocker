@@ -10,15 +10,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QGuiApplication>
 #include <QUrl>
 
-namespace KWayland
-{
-namespace Client
-{
-class ConnectionThread;
-class Registry;
-}
-}
-
 namespace PlasmaQuick
 {
 class QuickViewSharedEngine;
@@ -50,7 +41,6 @@ public:
     void lockImmediately();
     void setGraceTime(int milliseconds);
     void setNoLock(bool noLock);
-    void setKsldSocket(int socket);
 
     void updateCanSuspend();
     void updateCanHibernate();
@@ -96,7 +86,6 @@ private:
     bool m_canHibernate = false;
     QString m_userName, m_userImage;
 
-    wl_display *m_display = nullptr;
     org_kde_ksld *m_ksldInterface = nullptr;
 
     KPackage::Package m_wallpaperPackage;

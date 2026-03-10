@@ -12,14 +12,12 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "kscreensaversettings.h"
 #include "logind.h"
 #include "powermanagement_inhibition.h"
-#include "waylandlocker.h"
 #include "x11locker.h"
 
 #include "kscreenlocker_logging.h"
 #include <config-kscreenlocker.h>
 
 #include "config-unix.h"
-#include "waylandserver.h"
 // KDE
 #include <KAuthorized>
 #include <KGlobalAccel>
@@ -80,7 +78,6 @@ KSldApp::KSldApp(QObject *parent)
     , m_lockState(Unlocked)
     , m_lockProcess(nullptr)
     , m_lockWindow(nullptr)
-    , m_waylandServer(new WaylandServer(this))
     , m_lockedTimer(QElapsedTimer())
     , m_idleId(0)
     , m_lockGrace(0)
@@ -91,8 +88,6 @@ KSldApp::KSldApp(QObject *parent)
     , m_greeterEnv(QProcessEnvironment::systemEnvironment())
     , m_powerManagementInhibition(new PowerManagementInhibition(this))
 {
-    m_isX11 = X11Info::isPlatformX11();
-    m_isWayland = QCoreApplication::instance()->property("platformName").toString().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive);
 }
 
 KSldApp::~KSldApp()
@@ -169,9 +164,7 @@ void KSldApp::initialize()
 
     m_requirePassword = KScreenSaverSettings::requirePassword();
 
-    if (m_isX11) {
-        initializeX11();
-    }
+    initializeX11();
 
     // Global keys
     if (KAuthorized::authorizeAction(QStringLiteral("lock_screen"))) {
@@ -283,7 +276,6 @@ void KSldApp::initialize()
         if (error == QProcess::FailedToStart) {
             qCDebug(KSCREENLOCKER) << "Greeter Process  failed to start. Trying to directly unlock again.";
             doUnlock();
-            m_waylandServer->stop();
             qCCritical(KSCREENLOCKER) << "Greeter Process not available";
         } else {
             qCWarning(KSCREENLOCKER) << "Greeter Process encountered an unhandled error:" << error << ". Detailed error:" << m_lockProcess->errorString();
@@ -488,12 +480,6 @@ bool KSldApp::establishGrab()
 {
     qCDebug(KSCREENLOCKER) << "Establishing grab";
 
-    if (m_isWayland) {
-        return true;
-    }
-    if (!m_isX11) {
-        return true;
-    }
     XSync(X11Info::display(), False);
     XServerGrabber serverGrabber;
     if (!grabKeyboard()) {
@@ -587,7 +573,7 @@ void KSldApp::doUnlock()
 {
     qCDebug(KSCREENLOCKER) << "Unlocking now.";
 
-    if (m_isX11) {
+    {
         xcb_connection_t *c = X11Info::connection();
         xcb_ungrab_keyboard(c, XCB_CURRENT_TIME);
         xcb_ungrab_pointer(c, XCB_CURRENT_TIME);
@@ -615,7 +601,6 @@ void KSldApp::doUnlock()
     m_lockedTimer.invalidate();
     m_greeterCrashedCounter = 0;
     endGraceTime();
-    m_waylandServer->stop();
     KNotification::event(QStringLiteral("unlocked"), i18n("Screen unlocked"), QPixmap(), KNotification::CloseOnTimeout, QStringLiteral("ksmserver"));
     Q_EMIT unlocked();
     Q_EMIT lockStateChanged();
@@ -626,12 +611,6 @@ bool KSldApp::isInhibited() const
     return m_inhibitCounter || m_powerManagementInhibition->isInhibited();
 }
 
-void KSldApp::setWaylandFd(int fd)
-{
-    qCDebug(KSCREENLOCKER) << "Setting Wayland fd:" << fd;
-    m_waylandFd = fd;
-}
-
 void KSldApp::startLockProcess(EstablishLock establishLock)
 {
     qCDebug(KSCREENLOCKER) << "Starting lock process with establishLock:" << establishLockToString(establishLock);
@@ -639,13 +618,6 @@ void KSldApp::startLockProcess(EstablishLock establishLock)
     Q_EMIT aboutToStartGreeter();
 
     QProcessEnvironment env = m_greeterEnv;
-
-    if (m_isWayland && m_waylandFd >= 0) {
-        int socket = dup(m_waylandFd);
-        if (socket >= 0) {
-            env.insert(QStringLiteral("WAYLAND_SOCKET"), QString::number(socket));
-        }
-    }
 
     QStringList args;
     if (establishLock == EstablishLock::Immediate) {
@@ -663,17 +635,6 @@ void KSldApp::startLockProcess(EstablishLock establishLock)
         env.insert(s_qtQuickBackend, QStringLiteral("software"));
     }
 
-    // start the Wayland server
-    int fd = m_waylandServer->start();
-    if (fd == -1) {
-        qCWarning(KSCREENLOCKER) << "Could not start the Wayland server.";
-        Q_EMIT m_lockProcess->errorOccurred(QProcess::FailedToStart);
-        return;
-    }
-
-    args << QStringLiteral("--ksldfd");
-    args << QString::number(fd);
-
     auto greeterPath = KLibexec::path(QStringLiteral(KSCREENLOCKER_GREET_BIN_REL));
     if (!QFile::exists(greeterPath)) {
         greeterPath = QStringLiteral(KSCREENLOCKER_GREET_BIN_ABS);
@@ -683,7 +644,6 @@ void KSldApp::startLockProcess(EstablishLock establishLock)
 
     m_lockProcess->setProcessEnvironment(env);
     m_lockProcess->start(greeterPath, args);
-    close(fd);
 }
 
 void KSldApp::userActivity()
@@ -709,7 +669,7 @@ void KSldApp::showLockWindow()
     if (!m_lockWindow) {
         qCDebug(KSCREENLOCKER) << "Creating lock window";
 
-        if (m_isX11) {
+        {
             m_lockWindow = new X11Locker(this);
 
             connect(
@@ -724,22 +684,15 @@ void KSldApp::showLockWindow()
                 Qt::QueuedConnection);
         }
 
-        if (m_isWayland) {
-            m_lockWindow = new WaylandLocker(this);
-        }
         if (!m_lockWindow) {
             return;
         }
         m_lockWindow->setGlobalAccel(m_globalAccel);
 
         connect(m_lockWindow, &AbstractLocker::lockWindowShown, this, &KSldApp::lockScreenShown);
-
-        connect(m_waylandServer, &WaylandServer::x11WindowAdded, m_lockWindow, &AbstractLocker::addAllowedWindow);
     }
     m_lockWindow->showLockWindow();
-    if (m_isX11) {
-        XSync(X11Info::display(), False);
-    }
+    XSync(X11Info::display(), False);
 }
 
 void KSldApp::hideLockWindow()
@@ -851,9 +804,6 @@ void KSldApp::setGreeterEnvironment(const QProcessEnvironment &env)
     qCDebug(KSCREENLOCKER) << "Setting greeter environment";
 
     m_greeterEnv = env;
-    if (m_isWayland) {
-        m_greeterEnv.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("wayland"));
-    }
 }
 
 bool KSldApp::event(QEvent *event)
