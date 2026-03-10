@@ -40,7 +40,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QFile>
 #include <QKeyEvent>
 #include <QMimeData>
-#include <QSocketNotifier>
 #include <QThread>
 #include <QTimer>
 #include <qscreen.h>
@@ -52,9 +51,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QQuickItem>
 #include <QQuickView>
 
-// Wayland
-#include <wayland-client.h>
-#include <wayland-ksld-client-protocol.h>
 // X11
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -142,10 +138,7 @@ UnlockApp::UnlockApp(int &argc, char **argv)
         std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SMARTCARD_SERVICE), KUser().loginName(), PamAuthenticator::Smartcard));
     m_authenticators = new PamAuthenticators(std::move(interactive), std::move(noninteractive), this);
     initialize();
-
-    if (KWindowSystem::isPlatformX11()) {
-        installNativeEventFilter(new FocusOutEventFilter);
-    }
+    installNativeEventFilter(new FocusOutEventFilter);
 }
 
 UnlockApp::~UnlockApp()
@@ -158,13 +151,6 @@ UnlockApp::~UnlockApp()
         }
     }
     qDeleteAll(m_views);
-
-    if (m_ksldInterface) {
-        org_kde_ksld_destroy(m_ksldInterface);
-    }
-    if (m_display) {
-        wl_display_disconnect(m_display);
-    }
 }
 
 void UnlockApp::initialize()
@@ -317,17 +303,11 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
     view->engine()->setNetworkAccessManagerFactory(new NoAccessNetworkAccessManagerFactory);
 
     if (!m_testing) {
-        if (KWindowSystem::isPlatformX11()) {
-            view->setFlags(Qt::X11BypassWindowManagerHint);
-        } else {
-            view->setFlags(Qt::FramelessWindowHint);
-        }
+        view->setFlags(Qt::X11BypassWindowManagerHint);
     }
 
     if (m_ksldInterface) {
         view->create();
-        org_kde_ksld_x11window(m_ksldInterface, view->winId());
-        wl_display_flush(m_display);
     }
 
     // engine stuff
@@ -429,16 +409,7 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
     // verify that the engine's controller didn't change
     Q_ASSERT(dynamic_cast<NoAccessNetworkAccessManagerFactory *>(view->engine()->networkAccessManagerFactory()));
 
-    if (KWindowSystem::isPlatformWayland()) {
-        if (auto layerShellWindow = LayerShellQt::Window::get(view)) {
-            layerShellWindow->setExclusiveZone(-1);
-            layerShellWindow->setLayer(LayerShellQt::Window::LayerTop);
-            layerShellWindow->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityExclusive);
-            layerShellWindow->setScreen(screen);
-        }
-    }
-
-    // showFullScreen is implicit on X11 (through geometry and hints) and Wayland (layer-shell)
+    // showFullScreen is implicit on X11 (through geometry and hints)
     view->show();
     view->raise();
 
@@ -600,7 +571,7 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
                 break;
             }
         }
-        if (view && view->winId() && KWindowSystem::isPlatformX11()) {
+        if (view && view->winId()) {
             // showing greeter view window, set property
             auto x11App = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
             static Atom tag = XInternAtom(x11App->display(), "_KDE_SCREEN_LOCKER", False);
@@ -610,7 +581,7 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
 
-    if (event->type() == QEvent::MouseButtonPress && KWindowSystem::isPlatformX11()) {
+    if (event->type() == QEvent::MouseButtonPress) {
         if (getActiveScreen()) {
             getActiveScreen()->requestActivate();
         }
@@ -658,33 +629,6 @@ void UnlockApp::setGraceTime(int milliseconds)
 void UnlockApp::setNoLock(bool noLock)
 {
     m_noLock = noLock;
-}
-
-void UnlockApp::setKsldSocket(int socket)
-{
-    m_display = wl_display_connect_to_fd(socket);
-    auto socketnotifier = new QSocketNotifier(socket, QSocketNotifier::Read, this);
-    connect(socketnotifier, &QSocketNotifier::activated, this, [this] {
-        wl_display_dispatch(m_display);
-    });
-    auto registry = wl_display_get_registry(m_display);
-    auto globalAdded = [](void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
-        Q_UNUSED(version)
-        if (interface != "org_kde_ksld"_ba) {
-            return;
-        }
-        auto self = static_cast<UnlockApp *>(data);
-        // bind version 1 as we dropped all the V2 features
-        self->m_ksldInterface = static_cast<org_kde_ksld *>(wl_registry_bind(registry, name, &org_kde_ksld_interface, 1));
-        for (auto v : std::as_const(self->m_views)) {
-            org_kde_ksld_x11window(self->m_ksldInterface, v->winId());
-            wl_display_flush(self->m_display);
-        }
-    };
-    auto noopGlobalRemove = [](void *, struct wl_registry *, uint32_t) {};
-    static const wl_registry_listener registryListener = wl_registry_listener{globalAdded, noopGlobalRemove};
-    wl_registry_add_listener(registry, &registryListener, this);
-    wl_display_flush(m_display);
 }
 
 void UnlockApp::osdProgress(const QString &icon, int percent, int maximumPercent, const QString &additionalText)
