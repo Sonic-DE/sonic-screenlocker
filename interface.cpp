@@ -122,10 +122,6 @@ uint Interface::GetActiveTime()
 
 uint Interface::GetSessionIdleTime()
 {
-    if (KWindowSystem::isPlatformWayland()) {
-        QDBusContext::sendErrorReply(QDBusError::NotSupported, QStringLiteral("GetSessionIdleTime is not supported on this platform"));
-        return 0;
-    }
     return KIdleTime::instance()->idleTime();
 }
 

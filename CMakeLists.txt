@@ -74,14 +74,8 @@ find_package(XCB MODULE REQUIRED COMPONENTS XCB KEYSYMS XTEST)
 set_package_properties(XCB PROPERTIES TYPE REQUIRED)
 add_feature_info("XInput" X11_Xinput_FOUND "Required for grabbing XInput2 devices in the screen locker")
 
-find_package(WaylandScanner)
-find_package(Wayland 1.3 COMPONENTS Client Server)
 find_package(LayerShellQt REQUIRED)
 find_package(KF6Screen REQUIRED)
-
-set_package_properties(Wayland PROPERTIES
-                       TYPE REQUIRED
-                       PURPOSE "Required for building screenlocker")
 
 find_package(loginctl)
 set_package_properties(loginctl PROPERTIES
@@ -134,9 +128,6 @@ if (HAVE_CONSOLEKIT)
     configure_file(ck-unlock-session.cmake ${CMAKE_CURRENT_BINARY_DIR}/ck-unlock-session)
 endif ()
 
-# adjusting CMAKE_C_FLAGS to get wayland protocols to compile
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu90")
-
 ecm_setup_version(${PROJECT_VERSION} VARIABLE_PREFIX KSCREENLOCKER
     VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/kscreenlocker_version.h"
     PACKAGE_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfigVersion.cmake"
@@ -170,18 +161,14 @@ set(ksld_SRCS
    interface.cpp
    globalaccel.cpp
    x11locker.cpp
-   waylandlocker.cpp
    logind.cpp
-   waylandserver.cpp
    powermanagement_inhibition.cpp
    abstractlocker.h
    ksldapp.h
    interface.h
    globalaccel.h
    x11locker.h
-   waylandlocker.h
    logind.h
-   waylandserver.h
    powermanagement_inhibition.h
 )
 
@@ -197,11 +184,6 @@ ecm_qt_declare_logging_category(ksld_SRCS
 qt_add_dbus_adaptor(ksld_SRCS ${screensaver_dbusXML} interface.h ScreenLocker::Interface)
 qt_add_dbus_adaptor(ksld_SRCS ${kscreensaver_dbusXML} interface.h ScreenLocker::Interface kscreensaveradaptor KScreenSaverAdaptor)
 qt_add_dbus_interface(ksld_SRCS ${powerdevilpolicyagent_xml} powerdevilpolicyagent)
-
-ecm_add_wayland_server_protocol(ksld_SRCS
-    PROTOCOL protocols/ksld.xml
-    BASENAME ksld
-)
 
 add_library(KScreenLocker SHARED ${ksld_SRCS})
 
@@ -222,7 +204,6 @@ PRIVATE
    X11::X11
    XCB::XCB
    XCB::KEYSYMS
-   Wayland::Server
 )
 
 set(kscreenlocker_greet_bin_abs ${CMAKE_INSTALL_FULL_LIBEXECDIR}/kscreenlocker_greet)

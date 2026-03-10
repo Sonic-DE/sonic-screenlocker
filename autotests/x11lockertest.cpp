@@ -88,10 +88,6 @@ void LockWindowTest::initTestCase()
 
 void LockWindowTest::testBlankScreen()
 {
-    if (!KWindowSystem::isPlatformX11()) {
-        QSKIP("test requires X11");
-    }
-
     // create and show a dummy window to ensure the background doesn't start as black
     QWidget dummy;
     dummy.setWindowFlags(Qt::X11BypassWindowManagerHint);
@@ -166,10 +162,6 @@ void LockWindowTest::testBlankScreen()
 
 void LockWindowTest::testEmergencyShow()
 {
-    if (!KWindowSystem::isPlatformX11()) {
-        QSKIP("test requires X11");
-    }
-
     QWidget dummy;
     dummy.setWindowFlags(Qt::X11BypassWindowManagerHint);
     QPalette p;

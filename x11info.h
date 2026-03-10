@@ -15,11 +15,6 @@ using namespace Qt::StringLiterals;
 
 namespace X11Info
 {
-[[nodiscard]] inline bool isPlatformX11()
-{
-    return QGuiApplication::platformName() == "xcb"_L1;
-}
-
 [[nodiscard]] inline auto display()
 {
     return qGuiApp->nativeInterface<QNativeInterface::QX11Application>()->display();
