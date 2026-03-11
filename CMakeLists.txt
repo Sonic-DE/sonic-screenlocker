@@ -270,7 +270,7 @@ install(
         ${KScreenLocker_CamelCase_HEADERS}
         ${KScreenLocker_HEADERS}
     DESTINATION
-        ${KSLD_INCLUDEDIR}/KScreenLocker
+        ${KSLD_INCLUDEDIR}
     COMPONENT Devel)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfig.cmake"
