@@ -9,6 +9,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "x11locker.h"
 #include "globalaccel.h"
+
+#include <cstring>
 // KDE
 // Qt
 #include <QApplication>
@@ -172,8 +174,7 @@ void X11Locker::saveVRoot()
                  == Success)
                 && newRoot) {
                 gVRoot = children[i];
-                Window *dummy = (Window *)newRoot;
-                gVRootData = *dummy;
+                memcpy(&gVRootData, newRoot, sizeof(Window));
                 XFree((char *)newRoot);
                 break;
             }
