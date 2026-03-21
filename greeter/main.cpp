@@ -28,7 +28,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #endif
 
 #include <KSignalHandler>
-#include <LayerShellQt/Shell>
 
 static void signalHandler(int signum)
 {
@@ -64,8 +63,6 @@ int main(int argc, char *argv[])
     sigaddset(&blockedSignals, SIGUSR1);
     pthread_sigmask(SIG_BLOCK, &blockedSignals, NULL);
 
-    LayerShellQt::Shell::useLayerShell();
-
     // disable ptrace on the greeter
 #if HAVE_PR_SET_DUMPABLE
     prctl(PR_SET_DUMPABLE, 0);
@@ -79,16 +76,18 @@ int main(int argc, char *argv[])
 
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kscreenlocker_greet"));
 
-    // explicitly disable input methods on x11 as it makes it impossible to unlock, see BUG 306932
-    // but explicitly set on screen keyboard such as maliit is allowed
+    // explicitly disable input methods on x11 as it makes it impossible to
+    // unlock, see BUG 306932 but explicitly set on screen keyboard such as maliit
+    // is allowed
     if (qgetenv("QT_IM_MODULE") != QByteArrayLiteral("maliit")) {
         qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
     }
 
-    // Suppresses modal warnings about unwritable configuration files which may render the system inaccessible
+    // Suppresses modal warnings about unwritable configuration files which may
+    // render the system inaccessible
     qputenv("KDE_HOME_READONLY", "1");
-    // Disable QML caching to prevent cache corruption in full or near-full disk scenarios.
-    // https://bugs.kde.org/show_bug.cgi?id=471952
+    // Disable QML caching to prevent cache corruption in full or near-full disk
+    // scenarios. https://bugs.kde.org/show_bug.cgi?id=471952
     // https://bugreports.qt.io/browse/QTBUG-117130
     qputenv("QML_DISABLE_DISK_CACHE", "1");
 
@@ -123,7 +122,8 @@ int main(int argc, char *argv[])
     QCommandLineOption testingOption(QStringLiteral("testing"), i18n("Starts the greeter in testing mode"));
 
     QCommandLineOption shellOption(QStringLiteral("shell"),
-                                   i18n("Starts the greeter with the selected shell theme (only in Testing mode)"),
+                                   i18n("Starts the greeter with the selected "
+                                        "shell theme (only in Testing mode)"),
                                    QStringLiteral("shell"),
                                    QStringLiteral(""));
 
@@ -174,8 +174,9 @@ int main(int argc, char *argv[])
 
     app.initialViewSetup();
 
-    // This allow ksmserver to know when the application has actually finished setting itself up.
-    // Crucial for blocking until it is ready, ensuring locking happens before sleep, e.g.
+    // This allow ksmserver to know when the application has actually finished
+    // setting itself up. Crucial for blocking until it is ready, ensuring locking
+    // happens before sleep, e.g.
     std::cout << "Locked at " << QDateTime::currentDateTime().toSecsSinceEpoch() << std::endl;
 
     return app.exec();

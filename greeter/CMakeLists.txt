@@ -56,7 +56,6 @@ target_link_libraries(kscreenlocker_greet
     Qt::Quick
     Qt::Qml
     X11::X11
-    LayerShellQt::Interface
     KF6::ScreenDpms
 )
 

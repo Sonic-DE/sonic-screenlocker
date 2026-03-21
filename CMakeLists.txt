@@ -75,7 +75,6 @@ find_package(XCB MODULE REQUIRED COMPONENTS XCB KEYSYMS XTEST)
 set_package_properties(XCB PROPERTIES TYPE REQUIRED)
 add_feature_info("XInput" X11_Xinput_FOUND "Required for grabbing XInput2 devices in the screen locker")
 
-find_package(LayerShellQt REQUIRED)
 find_package(KF6Screen REQUIRED)
 
 find_package(loginctl)
