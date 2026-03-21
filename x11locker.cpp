@@ -369,6 +369,7 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
             } else {
                 qCDebug(KSCREENLOCKER) << "Unknown toplevel for MapNotify";
             }
+
             if (m_allowedWindows.contains(xm->window)) {
                 if (m_lockWindows.contains(xm->window)) {
                     qCDebug(KSCREENLOCKER) << "uhoh! duplicate!";
@@ -376,6 +377,7 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
                     if (!m_background->isVisible()) {
                         // not yet shown and we have a lock window, so we show our own window
                         m_background->show();
+                        Q_EMIT lockWindowShown();
                     }
                     m_lockWindows.prepend(xm->window);
                     fakeFocusIn(xm->window);
@@ -423,6 +425,12 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
                 info.window = xc->window;
                 info.viewable = false;
                 m_windowInfo.append(info);
+
+                // During locking, add new top-level windows as allowed windows (except our own background window).
+                if (xc->window != m_background->winId()) {
+                    qCDebug(KSCREENLOCKER) << "Adding window as allowed (greeter window):" << xc->window;
+                    addAllowedWindow(xc->window);
+                }
             }
             ret = true;
         }
