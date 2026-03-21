@@ -35,10 +35,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 // X11
 #include "x11info.h"
 #include <X11/Xlib.h>
-#include <xcb/xcb.h>
-#if X11_Xinput_FOUND
 #include <X11/extensions/XInput2.h>
-#endif
+#include <xcb/xcb.h>
 // other
 #include <signal.h>
 #include <unistd.h>
@@ -120,7 +118,6 @@ static bool s_lockProcessRequestedExit = false;
 
 static bool hasXInput()
 {
-#if X11_Xinput_FOUND
     Display *dpy = X11Info::display();
     int xi_opcode, event, error;
     // init XInput extension
@@ -138,9 +135,6 @@ static bool hasXInput()
         return XIQueryVersion(dpy, &major, &minor) == Success;
     }
     return result == Success;
-#else
-    return false;
-#endif
 }
 
 void KSldApp::initializeX11()
@@ -492,7 +486,6 @@ bool KSldApp::establishGrab()
         return false;
     }
 
-#if X11_Xinput_FOUND
     if (m_hasXInput2) {
         // get all devices
         Display *dpy = X11Info::display();
@@ -544,7 +537,6 @@ bool KSldApp::establishGrab()
         XFlush(dpy);
         return success;
     }
-#endif
 
     return true;
 }
@@ -573,25 +565,21 @@ void KSldApp::doUnlock()
 {
     qCDebug(KSCREENLOCKER) << "Unlocking now.";
 
-    {
-        xcb_connection_t *c = X11Info::connection();
-        xcb_ungrab_keyboard(c, XCB_CURRENT_TIME);
-        xcb_ungrab_pointer(c, XCB_CURRENT_TIME);
-        xcb_flush(c);
-#if X11_Xinput_FOUND
-        if (m_hasXInput2) {
-            // get all devices
-            Display *dpy = X11Info::display();
-            int numMasters;
-            XIDeviceInfo *masters = XIQueryDevice(dpy, XIAllMasterDevices, &numMasters);
-            // ungrab all devices again
-            for (int i = 0; i < numMasters; ++i) {
-                XIUngrabDevice(dpy, masters[i].deviceid, XCB_TIME_CURRENT_TIME);
-            }
-            XIFreeDeviceInfo(masters);
-            XFlush(dpy);
+    xcb_connection_t *c = X11Info::connection();
+    xcb_ungrab_keyboard(c, XCB_CURRENT_TIME);
+    xcb_ungrab_pointer(c, XCB_CURRENT_TIME);
+    xcb_flush(c);
+    if (m_hasXInput2) {
+        // get all devices
+        Display *dpy = X11Info::display();
+        int numMasters;
+        XIDeviceInfo *masters = XIQueryDevice(dpy, XIAllMasterDevices, &numMasters);
+        // ungrab all devices again
+        for (int i = 0; i < numMasters; ++i) {
+            XIUngrabDevice(dpy, masters[i].deviceid, XCB_TIME_CURRENT_TIME);
         }
-#endif
+        XIFreeDeviceInfo(masters);
+        XFlush(dpy);
     }
     hideLockWindow();
     // delete the window again, to get rid of event filter

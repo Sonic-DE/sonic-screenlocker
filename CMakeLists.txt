@@ -73,7 +73,6 @@ set_package_properties(X11 PROPERTIES DESCRIPTION "X11 libraries"
 
 find_package(XCB MODULE REQUIRED COMPONENTS XCB KEYSYMS XTEST)
 set_package_properties(XCB PROPERTIES TYPE REQUIRED)
-add_feature_info("XInput" X11_Xinput_FOUND "Required for grabbing XInput2 devices in the screen locker")
 
 find_package(KF6Screen REQUIRED)
 
@@ -214,9 +213,7 @@ target_compile_definitions(KScreenLocker PRIVATE
     KSCREENLOCKER_GREET_BIN_REL="${kscreenlocker_greet_bin_rel}"
 )
 
-if (X11_Xinput_FOUND)
-    target_link_libraries(KScreenLocker PRIVATE X11::Xi)
-endif()
+target_link_libraries(KScreenLocker PRIVATE X11::Xi)
 
 target_include_directories(KScreenLocker INTERFACE "$<INSTALL_INTERFACE:${KSLD_INCLUDEDIR}>")
 
