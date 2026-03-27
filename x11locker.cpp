@@ -293,47 +293,56 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
     case XCB_MOTION_NOTIFY:
         Q_EMIT userActivity();
         if (!m_lockWindows.isEmpty()) {
-            int x = 0;
-            int y = 0;
             if (responseType == XCB_KEY_PRESS || responseType == XCB_KEY_RELEASE) {
-                coordFromEvent<xcb_key_press_event_t>(event, &x, &y);
-            } else if (responseType == XCB_BUTTON_PRESS || responseType == XCB_BUTTON_RELEASE) {
-                coordFromEvent<xcb_button_press_event_t>(event, &x, &y);
-            } else if (responseType == XCB_MOTION_NOTIFY) {
-                coordFromEvent<xcb_motion_notify_event_t>(event, &x, &y);
-            }
-            Window root_return;
-            int x_return, y_return;
-            unsigned int width_return, height_return, border_width_return, depth_return;
-            for (WId window : std::as_const(m_lockWindows)) {
-                if (XGetGeometry(X11Info::display(),
-                                 window,
-                                 &root_return,
-                                 &x_return,
-                                 &y_return,
-                                 &width_return,
-                                 &height_return,
-                                 &border_width_return,
-                                 &depth_return)
-                    && (x >= x_return && x <= x_return + (int)width_return) && (y >= y_return && y <= y_return + (int)height_return)) {
-                    // We need to do our own focus handling (see comment in fakeFocusIn).
-                    // For now: Focus on clicks inside the window
-                    if (responseType == XCB_BUTTON_PRESS) {
-                        fakeFocusIn(window);
-                    }
-                    const int targetX = x - x_return;
-                    const int targetY = y - y_return;
-                    if (responseType == XCB_KEY_PRESS || responseType == XCB_KEY_RELEASE) {
-                        sendEvent<xcb_key_press_event_t>(event, window, targetX, targetY);
-                    } else if (responseType == XCB_BUTTON_PRESS || responseType == XCB_BUTTON_RELEASE) {
-                        sendEvent<xcb_button_press_event_t>(event, window, targetX, targetY);
-                    } else if (responseType == XCB_MOTION_NOTIFY) {
-                        sendEvent<xcb_motion_notify_event_t>(event, window, targetX, targetY);
-                    }
-                    break;
+                // For keyboard events, forward to the focused window or first window
+                WId targetWindow = m_focusedLockWindow;
+                if (targetWindow == XCB_WINDOW_NONE && !m_lockWindows.isEmpty()) {
+                    targetWindow = m_lockWindows.first();
                 }
+                if (targetWindow != XCB_WINDOW_NONE) {
+                    sendEvent<xcb_key_press_event_t>(event, targetWindow, 0, 0);
+                }
+                ret = true;
+            } else {
+                // For mouse events, use coordinate-based routing
+                int x = 0;
+                int y = 0;
+                if (responseType == XCB_BUTTON_PRESS || responseType == XCB_BUTTON_RELEASE) {
+                    coordFromEvent<xcb_button_press_event_t>(event, &x, &y);
+                } else if (responseType == XCB_MOTION_NOTIFY) {
+                    coordFromEvent<xcb_motion_notify_event_t>(event, &x, &y);
+                }
+                Window root_return;
+                int x_return, y_return;
+                unsigned int width_return, height_return, border_width_return, depth_return;
+                for (WId window : std::as_const(m_lockWindows)) {
+                    if (XGetGeometry(X11Info::display(),
+                                     window,
+                                     &root_return,
+                                     &x_return,
+                                     &y_return,
+                                     &width_return,
+                                     &height_return,
+                                     &border_width_return,
+                                     &depth_return)
+                        && (x >= x_return && x <= x_return + (int)width_return) && (y >= y_return && y <= y_return + (int)height_return)) {
+                        // We need to do our own focus handling (see comment in fakeFocusIn).
+                        // For now: Focus on clicks inside the window
+                        if (responseType == XCB_BUTTON_PRESS) {
+                            fakeFocusIn(window);
+                        }
+                        const int targetX = x - x_return;
+                        const int targetY = y - y_return;
+                        if (responseType == XCB_BUTTON_PRESS || responseType == XCB_BUTTON_RELEASE) {
+                            sendEvent<xcb_button_press_event_t>(event, window, targetX, targetY);
+                        } else if (responseType == XCB_MOTION_NOTIFY) {
+                            sendEvent<xcb_motion_notify_event_t>(event, window, targetX, targetY);
+                        }
+                        break;
+                    }
+                }
+                ret = true;
             }
-            ret = true;
         }
         break;
     case XCB_CONFIGURE_NOTIFY: { // from SubstructureNotifyMask on the root window
