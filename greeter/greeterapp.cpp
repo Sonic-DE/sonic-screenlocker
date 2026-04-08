@@ -124,9 +124,12 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     , m_testing(false)
     , m_ignoreRequests(false)
     , m_immediateLock(false)
+    , m_runtimeInitialized(false)
     , m_graceTime(0)
     , m_noLock(false)
     , m_shellIntegration(new ShellIntegration(this))
+    , m_lastCursorPos(QCursor::pos())
+    , m_lastCursorScreen(QGuiApplication::screenAt(m_lastCursorPos))
 {
     auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SERVICE), KUser().loginName());
     std::vector<std::unique_ptr<PamAuthenticator>> noninteractive;
@@ -430,6 +433,8 @@ void UnlockApp::markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view)
     showProperty.write(true);
     // random state update, actually rather required on init only
     QMetaObject::invokeMethod(this, "getFocus", Qt::QueuedConnection);
+    // reset focus to password field when view becomes visible
+    QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
 
     auto mime1 = new QMimeData;
     // Effectively we want to clear the clipboard
@@ -469,6 +474,15 @@ void UnlockApp::getFocus()
         activeScreen->setKeyboardGrabEnabled(true); // TODO - check whether this still works in master!
     }
     activeScreen->requestActivate();
+}
+
+void UnlockApp::resetFocus()
+{
+    for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
+        if (QObject *rootObject = view->rootObject()) {
+            QMetaObject::invokeMethod(rootObject, "resetFocus");
+        }
+    }
 }
 
 void UnlockApp::graceLockEnded()
@@ -590,6 +604,22 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::MouseButtonPress) {
         if (getActiveScreen()) {
             getActiveScreen()->requestActivate();
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::MouseMove) {
+        QPoint currentPos = QCursor::pos();
+        QScreen *currentScreen = QGuiApplication::screenAt(currentPos);
+
+        // Check if cursor moved to a different screen
+        if (currentScreen != m_lastCursorScreen && currentScreen != nullptr) {
+            m_lastCursorScreen = currentScreen;
+            m_lastCursorPos = currentPos;
+            // Mouse moved to a new screen, reset focus on password field
+            QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
+        } else {
+            m_lastCursorPos = currentPos;
         }
         return false;
     }
