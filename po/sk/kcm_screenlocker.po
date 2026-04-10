@@ -2,21 +2,20 @@
 # Roman Paholík <wizzardsk@gmail.com>, 2014, 2015, 2016.
 # Mthw <jari_45@hotmail.com>, 2018.
 # Matej Mrenica <matejm98mthw@gmail.com>, 2019, 2020.
-# SPDX-FileCopyrightText: 2026 Lucia Mrenica <lucia.mrenica@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: screenlocker_kcm\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
 "POT-Creation-Date: 2025-11-17 11:53+0000\n"
-"PO-Revision-Date: 2026-01-31 17:42+0100\n"
-"Last-Translator: Lucia Mrenica <lucia.mrenica@gmail.com>\n"
+"PO-Revision-Date: 2020-08-07 14:40+0200\n"
+"Last-Translator: Matej Mrenica <matejm98mthw@gmail.com>\n"
 "Language-Team: Slovak <kde-i18n-doc@kde.org>\n"
 "Language: sk\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Lokalize 25.12.1\n"
 "Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+"X-Generator: Lokalize 20.07.90\n"
 
 #: ui/Appearance.qml:22
 #, kde-format
@@ -105,55 +104,55 @@ msgstr[2] "rokov"
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "milliseconds"
-msgstr "milisekundy"
+msgstr "milisekúnd"
 
 #: ui/DurationPromptDialog.qml:173
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "seconds"
-msgstr "sekundy"
+msgstr "sekúnd"
 
 #: ui/DurationPromptDialog.qml:175
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "minutes"
-msgstr "minúty"
+msgstr "minút"
 
 #: ui/DurationPromptDialog.qml:177
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "hours"
-msgstr "hodiny"
+msgstr "hodín"
 
 #: ui/DurationPromptDialog.qml:179
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "days"
-msgstr "dni"
+msgstr "dní"
 
 #: ui/DurationPromptDialog.qml:181
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "weeks"
-msgstr "týždne"
+msgstr "týždňov"
 
 #: ui/DurationPromptDialog.qml:183
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "months"
-msgstr "mesiace"
+msgstr "mesiacov"
 
 #: ui/DurationPromptDialog.qml:185
 #, kde-format
 msgctxt "@text:radiobutton Unit of the time input field"
 msgid "years"
-msgstr "roky"
+msgstr "rokov"
 
 #: ui/main.qml:25
 #, kde-format
 msgctxt "@action:button"
 msgid "Configure Appearance…"
-msgstr "Nastaviť vzhľad..."
+msgstr "Vzhľad"
 
 #: ui/main.qml:37
 #, kde-format
@@ -215,25 +214,25 @@ msgstr[2] "%1 minútach"
 #, kde-format
 msgctxt "@title:window"
 msgid "Custom Duration"
-msgstr "Vlastné trvanie"
+msgstr "Vlastné pozadie:"
 
 #: ui/main.qml:102
 #, kde-format
 msgctxt "@option:check"
 msgid "Lock after waking from sleep"
-msgstr "Uzamknúť po prebudení zo spánku"
+msgstr "Po prebudení zo spánku"
 
 #: ui/main.qml:119
 #, kde-format
 msgctxt "First part of sentence \"Delay before password required: X minutes\""
 msgid "Delay before password required:"
-msgstr "Oneskorenie pred vyžadovaním hesla:"
+msgstr "Oneskorenie pred vyžiadaním hesla:"
 
 #: ui/main.qml:124
 #, kde-format
 msgctxt "The grace period is disabled"
 msgid "Require password immediately"
-msgstr "Vyžadovať heslo okamžite"
+msgstr "Vyžadovať heslo po zamknutí:"
 
 #: ui/main.qml:125
 #, kde-format
@@ -265,8 +264,6 @@ msgid "Keyboard shortcut:"
 msgstr "Klávesová skratka:"
 
 #, fuzzy
-#~| msgctxt "@action:button"
-#~| msgid "Configure..."
 #~ msgctxt "@action:button"
 #~ msgid "Confirm"
 #~ msgstr "Nastaviť..."
