@@ -178,6 +178,9 @@ void UnlockApp::initialize()
 
     installEventFilter(this);
 
+    // Connect to application state changes to detect system wake from sleep/power saving
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &UnlockApp::handleApplicationStateChanged);
+
     QDBusConnection::sessionBus().connect(s_plasmaShellService,
                                           s_osdServicePath,
                                           s_osdServiceInterface,
@@ -463,6 +466,8 @@ void UnlockApp::getFocus()
     // this loop is required to make the qml/graphicsscene properly handle the
     // shared keyboard input ie. "type something into the box of every greeter"
     for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
+        // Raise all views to ensure they are on top after screen wake
+        view->raise();
         if (!m_testing) {
             view->setKeyboardGrabEnabled(true); // TODO - check whether this still works in master!
         }
@@ -601,6 +606,12 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
 
+    if (event->type() == QEvent::Enter) {
+        // Mouse entered the view, reset focus to password field
+        QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
+        return false;
+    }
+
     if (event->type() == QEvent::MouseButtonPress) {
         if (getActiveScreen()) {
             getActiveScreen()->requestActivate();
@@ -616,7 +627,10 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
         if (currentScreen != m_lastCursorScreen && currentScreen != nullptr) {
             m_lastCursorScreen = currentScreen;
             m_lastCursorPos = currentPos;
-            // Mouse moved to a new screen, reset focus on password field
+            // Mouse moved to a new screen, activate the window and reset focus on password field
+            if (getActiveScreen()) {
+                getActiveScreen()->requestActivate();
+            }
             QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
         } else {
             m_lastCursorPos = currentPos;
@@ -647,6 +661,20 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
     }
 
     return false;
+}
+
+void UnlockApp::handleApplicationStateChanged(Qt::ApplicationState state)
+{
+    // Handle application state changes to detect system wake from sleep/power saving
+    // When the system wakes from sleep, the application state transitions back to Active
+    // from either Suspended or Inactive state
+    if (state == Qt::ApplicationActive && (m_previousApplicationState == Qt::ApplicationSuspended || m_previousApplicationState == Qt::ApplicationInactive)) {
+        qCDebug(KSCREENLOCKER_GREET) << "Application resumed from suspended/inactive state, resetting focus";
+        // Re-raise and re-grab focus to ensure lock screen is properly visible
+        QMetaObject::invokeMethod(this, "getFocus", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
+    }
+    m_previousApplicationState = state;
 }
 
 void UnlockApp::setGraceTime(int milliseconds)

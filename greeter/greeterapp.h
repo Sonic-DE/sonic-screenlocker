@@ -62,6 +62,7 @@ private Q_SLOTS:
     void getFocus();
     void markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view);
     void graceLockEnded();
+    void handleApplicationStateChanged(Qt::ApplicationState state);
 
 private:
     void initialize();
@@ -94,5 +95,6 @@ private:
 
     QPoint m_lastCursorPos;
     QScreen *m_lastCursorScreen = nullptr;
+    Qt::ApplicationState m_previousApplicationState = Qt::ApplicationActive;
 };
 } // namespace
