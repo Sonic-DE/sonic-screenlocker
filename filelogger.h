@@ -15,6 +15,31 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <sys/stat.h>
 
 static const QString s_logFilePath = QStringLiteral("/var/log/sonic/screenlocker.log");
+static const QString s_logFileBackupPath = QStringLiteral("/var/log/sonic/screenlocker.log.last");
+
+static bool s_logRotationDone = false;
+
+static void rotateLogFile()
+{
+    if (s_logRotationDone) {
+        return; // Only do this once per application run
+    }
+    s_logRotationDone = true;
+
+    QFile logFile(s_logFilePath);
+    if (!logFile.exists()) {
+        return; // No log file to rotate
+    }
+
+    // Delete old backup file if it exists
+    QFile backupFile(s_logFileBackupPath);
+    if (backupFile.exists()) {
+        backupFile.remove();
+    }
+
+    // Rename current log file to backup
+    logFile.rename(s_logFileBackupPath);
+}
 
 static bool isJournalctlAvailable()
 {
@@ -67,6 +92,9 @@ static void fileMessageHandler(QtMsgType type, const QMessageLogContext &context
 
 static void installFileLogger()
 {
+    // Rotate log file once per application run
+    rotateLogFile();
+
     if (isJournalctlAvailable()) {
         // journald is available, don't install a custom handler
         // Qt's default behavior sends to stderr, which journald captures
