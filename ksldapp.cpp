@@ -7,6 +7,7 @@
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "ksldapp.h"
+#include "filelogger.h"
 #include "globalaccel.h"
 #include "interface.h"
 #include "kscreensaversettings.h"
@@ -154,6 +155,9 @@ void KSldApp::initializeX11()
 
 void KSldApp::initialize()
 {
+    // Install file logger: uses journald if available, otherwise writes to /var/log/sonic/screenlocker.log
+    installFileLogger();
+
     qCDebug(KSCREENLOCKER) << "Initializing";
 
     m_requirePassword = KScreenSaverSettings::requirePassword();

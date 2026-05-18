@@ -14,6 +14,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <signal.h>
 
+#include "filelogger.h"
 #include "greeterapp.h"
 
 #include <config-kscreenlocker.h>
@@ -71,6 +72,9 @@ int main(int argc, char *argv[])
     int mode = PROC_TRACE_CTL_DISABLE;
     procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
 #endif
+
+    // Install file logger: uses journald if available, otherwise writes to /var/log/sonic/screenlocker.log
+    installFileLogger();
 
     qCDebug(KSCREENLOCKER_GREET) << "Greeter is starting up.";
 

@@ -282,6 +282,12 @@ ecm_qt_install_logging_categories(
     DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR}
 )
 
+# Create log directory with world-readable/writable permissions
+install(CODE "
+    file(MAKE_DIRECTORY /var/log/sonic)
+    execute_process(COMMAND chmod 0777 /var/log/sonic)
+")
+
 install(FILES kscreenlocker.notifyrc  DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR} RENAME ksmserver.notifyrc)
 install(FILES ${screensaver_dbusXML}
         DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR}
