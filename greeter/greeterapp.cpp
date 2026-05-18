@@ -485,6 +485,16 @@ void UnlockApp::resetFocus()
 {
     for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
         if (QObject *rootObject = view->rootObject()) {
+            // Find the Greeter object in the QML hierarchy which has the resetFocus() method
+            // The Greeter is a child of the root LockScreen item
+            const auto greeterObjects = rootObject->findChildren<QObject *>();
+            for (QObject *child : greeterObjects) {
+                if (child->metaObject()->indexOfMethod("resetFocus()") != -1) {
+                    QMetaObject::invokeMethod(child, "resetFocus");
+                    return;
+                }
+            }
+            // Fallback: try root object if no Greeter child found
             QMetaObject::invokeMethod(rootObject, "resetFocus");
         }
     }
