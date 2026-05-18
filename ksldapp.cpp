@@ -29,6 +29,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 // Qt
 #include <QAction>
+#include <QDBusConnection>
+#include <QDBusInterface>
 #include <QFile>
 #include <QKeyEvent>
 #include <QProcess>
@@ -164,9 +166,15 @@ void KSldApp::initialize()
 
     initializeX11();
 
-    // Global keys
+    // Global keys - only register if kglobalaccel service is available
     if (KAuthorized::authorizeAction(QStringLiteral("lock_screen"))) {
-        qCDebug(KSCREENLOCKER) << "Configuring Lock Action";
+        // Check if kglobalaccel service is available
+        QDBusInterface kglobalaccelInterface(QStringLiteral("org.kde.kglobalaccel"),
+                                             QStringLiteral("/kglobalaccel"),
+                                             QStringLiteral("org.kde.KGlobalAccel"),
+                                             QDBusConnection::sessionBus());
+        bool kglobalaccelAvailable = kglobalaccelInterface.isValid();
+
         QAction *a = new QAction(this);
         a->setObjectName(QStringLiteral("Lock Session"));
         // The following properties are set manually because we do not depend
@@ -174,7 +182,11 @@ void KSldApp::initialize()
         a->setProperty("componentDisplayName", i18nc("Name of a category in System Settings' Shortcuts KCM; match it exactly", "Session Management"));
         a->setProperty("componentName", QStringLiteral("ksmserver"));
         a->setText(i18n("Lock Session"));
-        KGlobalAccel::self()->setGlobalShortcut(a, KScreenSaverSettings::defaultShortcuts());
+
+        if (kglobalaccelAvailable) {
+            KGlobalAccel::self()->setGlobalShortcut(a, KScreenSaverSettings::defaultShortcuts());
+        }
+
         connect(a, &QAction::triggered, this, [this]() {
             qCDebug(KSCREENLOCKER) << "Locking session due to global shortcut";
             const EstablishLock lockType = m_requirePassword ? EstablishLock::Immediate : EstablishLock::Delayed;
