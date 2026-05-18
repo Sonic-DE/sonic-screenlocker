@@ -14,11 +14,18 @@ set(kscreenlocker_authenticator_SRCS
     pamauthenticator.h
 )
 
+# Set default severity based on build type: Debug for debug builds, Info for release builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(KSCREENLOCKER_GREET_SEVERITY Debug)
+else()
+    set(KSCREENLOCKER_GREET_SEVERITY Info)
+endif()
+
 ecm_qt_declare_logging_category(kscreenlocker_authenticator_SRCS
     HEADER kscreenlocker_greet_logging.h
     IDENTIFIER KSCREENLOCKER_GREET
     CATEGORY_NAME kscreenlocker_greet
-    DEFAULT_SEVERITY Info
+    DEFAULT_SEVERITY ${KSCREENLOCKER_GREET_SEVERITY}
     DESCRIPTION "KScreenLocker (greeter)"
     EXPORT KSCREENLOCKER
 )
