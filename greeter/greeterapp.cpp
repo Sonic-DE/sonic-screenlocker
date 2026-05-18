@@ -274,6 +274,16 @@ void UnlockApp::initialViewSetup()
 void UnlockApp::handleScreen(QScreen *screen)
 {
     if (screen->geometry().isNull()) {
+        qCWarning(KSCREENLOCKER_GREET) << "handleScreen: Screen" << screen->name() << "has null geometry, skipping view creation."
+                                       << "This may cause display issues after resume from power saving.";
+        // Connect to geometryChanged to retry when the screen gets valid geometry
+        connect(screen, &QScreen::geometryChanged, this, [this, screen]() {
+            if (!screen->geometry().isNull()) {
+                // Disconnect this one-shot handler
+                QObject::disconnect(sender());
+                handleScreen(screen);
+            }
+        });
         return;
     }
     auto *view = createViewForScreen(screen);
