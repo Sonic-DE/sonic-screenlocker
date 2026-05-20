@@ -10,6 +10,9 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QGuiApplication>
 #include <QUrl>
 
+// Forward declaration for D-Bus interface
+class OrgKdeScreensaverGreeterInterface;
+
 namespace PlasmaQuick
 {
 class QuickViewSharedEngine;
@@ -59,6 +62,7 @@ private Q_SLOTS:
     void suspendToRam();
     void suspendToDisk();
     void getFocus();
+    void resetFocus();
     void markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view);
     void graceLockEnded();
 
@@ -68,6 +72,13 @@ private:
     void setWallpaperItemProperties(PlasmaQuick::SharedQmlEngine *wallpaperObject, PlasmaQuick::QuickViewSharedEngine *view);
     void screenGeometryChanged(QScreen *screen, const QRect &geo);
     QWindow *getActiveScreen();
+    void logViewHealth();
+
+    // D-Bus communication with KSldApp
+    OrgKdeScreensaverGreeterInterface *m_ksldInterface = nullptr;
+    void registerViewWithKsld(PlasmaQuick::QuickViewSharedEngine *view);
+    void unregisterViewFromKsld(PlasmaQuick::QuickViewSharedEngine *view);
+    void notifyAuthenticationSuccess();
 
     QString m_packageName;
     QUrl m_mainQmlPath;
@@ -85,8 +96,6 @@ private:
     bool m_canSuspend = false;
     bool m_canHibernate = false;
     QString m_userName, m_userImage;
-
-    org_kde_ksld *m_ksldInterface = nullptr;
 
     KPackage::Package m_wallpaperPackage;
     ShellIntegration *m_shellIntegration;

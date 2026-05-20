@@ -11,6 +11,9 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "shell_integration.h"
 #include "wallpaper_integration.h"
 
+// D-Bus interface to KSldApp
+#include "ksldgreeterinterface.h"
+
 #include <config-kscreenlocker.h>
 #include <iostream>
 #include <kscreenlocker_greet_logging.h>
@@ -119,6 +122,8 @@ public:
 // App
 UnlockApp::UnlockApp(int &argc, char **argv)
     : QGuiApplication(argc, argv)
+    , m_ksldInterface(
+          new OrgKdeScreensaverGreeterInterface(QStringLiteral("org.kde.screensaver"), QStringLiteral("/Greeter"), QDBusConnection::sessionBus(), this))
     , m_resetRequestIgnoreTimer(new QTimer(this))
     , m_delayedLockTimer(nullptr)
     , m_testing(false)
@@ -351,8 +356,13 @@ void UnlockApp::handleScreen(QScreen *screen)
     if (view) {
         m_views << view;
 
+        // Register view with KSldApp via D-Bus
+        registerViewWithKsld(view);
+
         // Connect to view destruction to detect when views become invalid
         connect(view, &QObject::destroyed, this, [this, screenName = screen->name()](QObject *obj) {
+            // Unregister from KSldApp via D-Bus
+            unregisterViewFromKsld(qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
             // Remove from list if still present
             m_views.removeOne(qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
         });
@@ -400,12 +410,14 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
     QQmlContext *context = view->engine()->rootContext();
     connect(view->engine().get(), &QQmlEngine::quit, this, [this]() {
         if (m_authenticators->isUnlocked()) {
-            std::cout << "Unlocked" << std::endl;
-            // Quit without exit handlers
-            // This is because:
-            // - the pam_unix backend will always report a failed login if we complete
-            // the converse method no matter what exit code we use
-            // - the fprintd backend sometimes takes a long time
+            // Notify KSldApp via D-Bus instead of stdout
+            notifyAuthenticationSuccess();
+            // std::cout << "Unlocked" << std::endl;
+            //  Quit without exit handlers
+            //  This is because:
+            //  - the pam_unix backend will always report a failed login if we complete
+            //  the converse method no matter what exit code we use
+            //  - the fprintd backend sometimes takes a long time
             _exit(0);
         } else {
             qCWarning(KSCREENLOCKER_GREET) << "Greeter tried to quit without being unlocked";
@@ -601,6 +613,34 @@ void UnlockApp::resetFocus()
             QMetaObject::invokeMethod(rootObject, "resetFocus");
         }
     }
+}
+
+void UnlockApp::registerViewWithKsld(PlasmaQuick::QuickViewSharedEngine *view)
+{
+    if (!view || !m_ksldInterface) {
+        return;
+    }
+    QString screenName = view->screen() ? view->screen()->name() : QString();
+    qCDebug(KSCREENLOCKER_GREET) << "Registering view with KSldApp: winId=" << view->winId() << "screen=" << screenName;
+    m_ksldInterface->RegisterWindow(view->winId(), screenName);
+}
+
+void UnlockApp::unregisterViewFromKsld(PlasmaQuick::QuickViewSharedEngine *view)
+{
+    if (!view || !m_ksldInterface) {
+        return;
+    }
+    qCDebug(KSCREENLOCKER_GREET) << "Unregistering view from KSldApp: winId=" << view->winId();
+    m_ksldInterface->UnregisterWindow(view->winId());
+}
+
+void UnlockApp::notifyAuthenticationSuccess()
+{
+    if (!m_ksldInterface) {
+        return;
+    }
+    qCDebug(KSCREENLOCKER_GREET) << "Notifying KSldApp of authentication success via D-Bus";
+    m_ksldInterface->AuthenticationSuccess();
 }
 
 void UnlockApp::graceLockEnded()

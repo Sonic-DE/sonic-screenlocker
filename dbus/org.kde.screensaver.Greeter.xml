@@ -1,0 +1,47 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+    <interface name="org.kde.screensaver.Greeter">
+        <!-- Methods called by the greeter process to communicate with KSldApp -->
+
+        <!-- Register a greeter window with KSldApp so it can track and manage it -->
+        <method name="RegisterWindow">
+            <arg name="winId" type="u" direction="in" />
+            <arg name="screenName" type="s" direction="in" />
+        </method>
+
+        <!-- Unregister a greeter window when it's destroyed -->
+        <method name="UnregisterWindow">
+            <arg name="winId" type="u" direction="in" />
+        </method>
+
+        <!-- Notify KSldApp that authentication succeeded -->
+        <method name="AuthenticationSuccess" />
+
+        <!-- Request focus on a specific screen -->
+        <method name="GetFocus">
+            <arg name="screenName" type="s" direction="in" />
+        </method>
+
+        <!-- Signals emitted by KSldApp to notify the greeter of screen changes -->
+
+        <!-- A screen was added to the system -->
+        <signal name="ScreenAdded">
+            <arg name="screenName" type="s" />
+            <arg name="x" type="i" />
+            <arg name="y" type="i" />
+            <arg name="width" type="i" />
+            <arg name="height" type="i" />
+        </signal>
+
+        <!-- A screen was removed from the system -->
+        <signal name="ScreenRemoved">
+            <arg name="screenName" type="s" />
+        </signal>
+
+        <!-- KSldApp requests the greeter to lock -->
+        <signal name="LockRequested" />
+
+        <!-- KSldApp requests the greeter to unlock -->
+        <signal name="UnlockRequested" />
+    </interface>
+</node>

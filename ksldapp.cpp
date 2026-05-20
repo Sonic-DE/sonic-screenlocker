@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "ksldapp.h"
 #include "filelogger.h"
 #include "globalaccel.h"
+#include "greeteradaptor.h"
 #include "interface.h"
 #include "kscreensaversettings.h"
 #include "logind.h"
@@ -165,6 +166,9 @@ void KSldApp::initialize()
     m_requirePassword = KScreenSaverSettings::requirePassword();
 
     initializeX11();
+
+    // Create the D-Bus adaptor for greeter communication
+    m_greeterAdaptor = new GreeterAdaptor(this);
 
     // Global keys - only register if kglobalaccel service is available
     if (KAuthorized::authorizeAction(QStringLiteral("lock_screen"))) {
@@ -390,6 +394,40 @@ void KSldApp::lockProcessRequestedUnlock()
     s_logindExit = false;
     s_lockProcessRequestedExit = true;
     doUnlock();
+}
+
+void KSldApp::registerGreeterWindow(uint winId, const QString &screenName)
+{
+    // Store the window ID for later grab management
+    m_greeterWindows.insert(winId, screenName);
+}
+
+void KSldApp::unregisterGreeterWindow(uint winId)
+{
+    m_greeterWindows.remove(winId);
+}
+
+void KSldApp::greeterAuthenticationSuccess()
+{
+    lockProcessRequestedUnlock();
+}
+
+void KSldApp::greeterGetFocus(const QString &screenName)
+{
+    // Focus is managed by the greeter itself, but we log it here
+    Q_UNUSED(screenName);
+}
+
+void KSldApp::emitScreenAdded(const QString &screenName, const QRect &geometry)
+{
+    // Signal will be emitted via D-Bus through the adaptor
+    Q_UNUSED(screenName);
+    Q_UNUSED(geometry);
+}
+
+void KSldApp::emitScreenRemoved(const QString &screenName)
+{
+    Q_UNUSED(screenName);
 }
 
 void KSldApp::configure()
@@ -722,7 +760,6 @@ uint KSldApp::activeTime() const
 
 bool KSldApp::isGraceTime() const
 {
-    qCDebug(KSCREENLOCKER) << "Checking if in grace time: " << m_inGraceTime;
     return m_inGraceTime;
 }
 

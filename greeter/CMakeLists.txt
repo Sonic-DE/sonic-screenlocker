@@ -40,6 +40,10 @@ set(kscreenlocker_greet_SRCS
    noaccessnetworkaccessmanagerfactory.h
 )
 
+# Generate D-Bus interface for communicating with KSldApp
+set(greeter_dbusXML ${CMAKE_SOURCE_DIR}/dbus/org.kde.screensaver.Greeter.xml)
+qt_add_dbus_interface(kscreenlocker_greet_SRCS ${greeter_dbusXML} ksldgreeterinterface)
+
 add_library(kscreenlocker_authenticator OBJECT ${kscreenlocker_authenticator_SRCS})
 target_link_libraries(kscreenlocker_authenticator
     Qt::Core

@@ -9,7 +9,9 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 
 #include <QElapsedTimer>
+#include <QHash>
 #include <QProcessEnvironment>
+#include <QRect>
 
 #include <KScreenLocker/kscreenlocker_export.h>
 
@@ -19,6 +21,7 @@ class LogindIntegration;
 class QTimer;
 class KSldTest;
 class PowerManagementInhibition;
+class GreeterAdaptor;
 
 namespace ScreenLocker
 {
@@ -219,6 +222,43 @@ public:
     {
         m_forceSoftwareRendering = force;
     }
+
+    /**
+     * @brief Registers a greeter window with KSldApp.
+     * @param winId The X11 window ID of the greeter view.
+     * @param screenName The name of the screen the view is on.
+     */
+    void registerGreeterWindow(uint winId, const QString &screenName);
+
+    /**
+     * @brief Unregisters a greeter window from KSldApp.
+     * @param winId The X11 window ID of the greeter view.
+     */
+    void unregisterGreeterWindow(uint winId);
+
+    /**
+     * @brief Called when the greeter reports authentication success.
+     */
+    void greeterAuthenticationSuccess();
+
+    /**
+     * @brief Called when the greeter requests focus on a screen.
+     * @param screenName The name of the screen to focus.
+     */
+    void greeterGetFocus(const QString &screenName);
+
+    /**
+     * @brief Emits the ScreenAdded signal to notify greeters of a new screen.
+     * @param screenName The name of the added screen.
+     * @param geometry The geometry of the added screen.
+     */
+    void emitScreenAdded(const QString &screenName, const QRect &geometry);
+
+    /**
+     * @brief Emits the ScreenRemoved signal to notify greeters of a removed screen.
+     * @param screenName The name of the removed screen.
+     */
+    void emitScreenRemoved(const QString &screenName);
 
 Q_SIGNALS:
 
@@ -429,6 +469,16 @@ private:
      * as a screen saver.
      **/
     bool m_requirePassword = true;
+
+    /**
+     * Map of greeter window IDs to screen names.
+     */
+    QHash<uint, QString> m_greeterWindows;
+
+    /**
+     * D-Bus adaptor for greeter communication.
+     */
+    GreeterAdaptor *m_greeterAdaptor = nullptr;
 
     // for auto tests
     friend KSldTest;
