@@ -62,7 +62,6 @@ private Q_SLOTS:
     void suspendToRam();
     void suspendToDisk();
     void getFocus();
-    void resetFocus();
     void markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view);
     void graceLockEnded();
 
