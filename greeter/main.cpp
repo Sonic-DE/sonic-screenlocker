@@ -181,6 +181,7 @@ int main(int argc, char *argv[])
     // This allow ksmserver to know when the application has actually finished
     // setting itself up. Crucial for blocking until it is ready, ensuring locking
     // happens before sleep, e.g.
+    // TODO: Replace this stdout communication with D-Bus or another alternative (see https://github.com/Sonic-DE/sonic/issues/14)
     std::cout << "Locked at " << QDateTime::currentDateTime().toSecsSinceEpoch() << std::endl;
 
     return app.exec();

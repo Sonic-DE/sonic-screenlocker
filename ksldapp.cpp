@@ -232,14 +232,7 @@ void KSldApp::initialize()
 
     m_lockProcess = new QProcess();
     m_lockProcess->setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    m_lockProcess->setReadChannel(QProcess::StandardOutput);
     auto finishedSignal = static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished);
-    connect(m_lockProcess, &QProcess::readyRead, this, [this] {
-        const auto str = QString::fromLocal8Bit(m_lockProcess->readLine());
-        if (str == QStringLiteral("Unlocked\n")) {
-            lockProcessRequestedUnlock();
-        }
-    });
     connect(m_lockProcess, finishedSignal, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         qCDebug(KSCREENLOCKER) << "Greeter process exitted with status:" << exitStatus << "exit code:" << exitCode;
 

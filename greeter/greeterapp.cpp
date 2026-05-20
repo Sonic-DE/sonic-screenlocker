@@ -410,14 +410,13 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
     QQmlContext *context = view->engine()->rootContext();
     connect(view->engine().get(), &QQmlEngine::quit, this, [this]() {
         if (m_authenticators->isUnlocked()) {
-            // Notify KSldApp via D-Bus instead of stdout
+            // Notify KSldApp via D-Bus
             notifyAuthenticationSuccess();
-            // std::cout << "Unlocked" << std::endl;
-            //  Quit without exit handlers
-            //  This is because:
-            //  - the pam_unix backend will always report a failed login if we complete
-            //  the converse method no matter what exit code we use
-            //  - the fprintd backend sometimes takes a long time
+            // Quit without exit handlers
+            // This is because:
+            // - the pam_unix backend will always report a failed login if we complete
+            // the converse method no matter what exit code we use
+            // - the fprintd backend sometimes takes a long time
             _exit(0);
         } else {
             qCWarning(KSCREENLOCKER_GREET) << "Greeter tried to quit without being unlocked";
