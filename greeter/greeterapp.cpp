@@ -128,8 +128,6 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     , m_graceTime(0)
     , m_noLock(false)
     , m_shellIntegration(new ShellIntegration(this))
-    , m_lastCursorPos(QCursor::pos())
-    , m_lastCursorScreen(QGuiApplication::screenAt(m_lastCursorPos))
 {
     auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SERVICE), KUser().loginName());
     std::vector<std::unique_ptr<PamAuthenticator>> noninteractive;
@@ -140,6 +138,58 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     m_authenticators = new PamAuthenticators(std::move(interactive), std::move(noninteractive), this);
     initialize();
     installNativeEventFilter(new FocusOutEventFilter);
+
+    // Connect to screenAdded to handle screens coming back after power cycle
+    connect(this, &QGuiApplication::screenAdded, this, [this](QScreen *screen) {
+        if (screen->geometry().isNull()) {
+            connect(screen, &QScreen::geometryChanged, this, [this, screen]() {
+                if (!screen->geometry().isNull()) {
+                    handleScreen(screen);
+                }
+            });
+            return;
+        }
+        handleScreen(screen);
+    });
+
+    // Connect to screenRemoved to immediately clean up views referencing the removed screen
+    connect(this, &QGuiApplication::screenRemoved, this, [this](QScreen *screen) {
+        // Immediately remove any views that reference the removed screen
+        // This must happen BEFORE the handleScreen cleanup to prevent race conditions
+        QList<PlasmaQuick::QuickViewSharedEngine *> viewsToRemove;
+        for (auto *view : std::as_const(m_views)) {
+            if (view->screen() == screen) {
+                viewsToRemove << view;
+            }
+        }
+
+        for (auto *view : viewsToRemove) {
+            m_views.removeOne(view);
+            // Disconnect all signal/slot connections from the view to prevent dangling signals
+            QObject::disconnect(view, nullptr, nullptr, nullptr);
+            // Hide the view before deleting to prevent any grab attempts on it
+            view->hide();
+            view->setKeyboardGrabEnabled(false);
+            delete view;
+        }
+
+        // Re-establish keyboard grabs on all remaining views after screen removal
+        // This is required because X11 may have lost the grab state when the screen was removed
+        for (auto *view : std::as_const(m_views)) {
+            view->raise();
+            if (!m_testing) {
+                view->setKeyboardGrabEnabled(true);
+            }
+        }
+        // Also re-grab the active screen
+        QWindow *activeScreen = getActiveScreen();
+        if (activeScreen) {
+            if (!m_testing) {
+                activeScreen->setKeyboardGrabEnabled(true);
+            }
+            activeScreen->requestActivate();
+        }
+    });
 }
 
 UnlockApp::~UnlockApp()
@@ -177,9 +227,6 @@ void UnlockApp::initialize()
     m_userImage = user.faceIconPath();
 
     installEventFilter(this);
-
-    // Connect to application state changes to detect system wake from sleep/power saving
-    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &UnlockApp::handleApplicationStateChanged);
 
     QDBusConnection::sessionBus().connect(s_plasmaShellService,
                                           s_osdServicePath,
@@ -286,8 +333,32 @@ void UnlockApp::handleScreen(QScreen *screen)
         });
         return;
     }
+
+    // Check if we already have a view for this screen - avoid duplicates
+    for (auto *existingView : std::as_const(m_views)) {
+        if (existingView->screen() == screen) {
+            // Update geometry if it changed
+            if (existingView->geometry() != screen->geometry()) {
+                existingView->setGeometry(screen->geometry());
+                existingView->raise();
+                existingView->show();
+            }
+            return;
+        }
+    }
+
     auto *view = createViewForScreen(screen);
-    m_views << view;
+    if (view) {
+        m_views << view;
+
+        // Connect to view destruction to detect when views become invalid
+        connect(view, &QObject::destroyed, this, [this, screenName = screen->name()](QObject *obj) {
+            // Remove from list if still present
+            m_views.removeOne(qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
+        });
+    } else {
+        qCWarning(KSCREENLOCKER_GREET) << "createViewForScreen returned nullptr for screen:" << screen->name();
+    }
     connect(this, &QGuiApplication::screenRemoved, view, [this, view, screen](QScreen *removedScreen) {
         if (removedScreen != screen) {
             return;
@@ -475,12 +546,34 @@ void UnlockApp::getFocus()
     }
     // this loop is required to make the qml/graphicsscene properly handle the
     // shared keyboard input ie. "type something into the box of every greeter"
+    int viewIndex = 0;
     for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
+        // Check if view has a valid X11 window before attempting grab
+        WId winId = view->winId();
+        if (winId == 0) {
+            viewIndex++;
+            continue;
+        }
+
         // Raise all views to ensure they are on top after screen wake
         view->raise();
         if (!m_testing) {
-            view->setKeyboardGrabEnabled(true); // TODO - check whether this still works in master!
+            // Check X11 connection state before grab
+            Display *dpy = XOpenDisplay(nullptr);
+            if (dpy) {
+                // Check if the window still exists in X11
+                Window root, parent;
+                Window *children;
+                unsigned int nchildren;
+                bool windowExists = XQueryTree(dpy, winId, &root, &parent, &children, &nchildren);
+                if (children) {
+                    XFree(children);
+                }
+                XCloseDisplay(dpy);
+            }
+            view->setKeyboardGrabEnabled(true);
         }
+        viewIndex++;
     }
     // activate window and grab input to be sure it really ends up there.
     // focus setting is still required for proper internal QWidget state (and eg.
@@ -626,34 +719,9 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
 
-    if (event->type() == QEvent::Enter) {
-        // Mouse entered the view, reset focus to password field
-        QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
-        return false;
-    }
-
     if (event->type() == QEvent::MouseButtonPress) {
         if (getActiveScreen()) {
             getActiveScreen()->requestActivate();
-        }
-        return false;
-    }
-
-    if (event->type() == QEvent::MouseMove) {
-        QPoint currentPos = QCursor::pos();
-        QScreen *currentScreen = QGuiApplication::screenAt(currentPos);
-
-        // Check if cursor moved to a different screen
-        if (currentScreen != m_lastCursorScreen && currentScreen != nullptr) {
-            m_lastCursorScreen = currentScreen;
-            m_lastCursorPos = currentPos;
-            // Mouse moved to a new screen, activate the window and reset focus on password field
-            if (getActiveScreen()) {
-                getActiveScreen()->requestActivate();
-            }
-            QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
-        } else {
-            m_lastCursorPos = currentPos;
         }
         return false;
     }
@@ -681,20 +749,6 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
     }
 
     return false;
-}
-
-void UnlockApp::handleApplicationStateChanged(Qt::ApplicationState state)
-{
-    // Handle application state changes to detect system wake from sleep/power saving
-    // When the system wakes from sleep, the application state transitions back to Active
-    // from either Suspended or Inactive state
-    if (state == Qt::ApplicationActive && (m_previousApplicationState == Qt::ApplicationSuspended || m_previousApplicationState == Qt::ApplicationInactive)) {
-        qCDebug(KSCREENLOCKER_GREET) << "Application resumed from suspended/inactive state, resetting focus";
-        // Re-raise and re-grab focus to ensure lock screen is properly visible
-        QMetaObject::invokeMethod(this, "getFocus", Qt::QueuedConnection);
-        QMetaObject::invokeMethod(this, "resetFocus", Qt::QueuedConnection);
-    }
-    m_previousApplicationState = state;
 }
 
 void UnlockApp::setGraceTime(int milliseconds)

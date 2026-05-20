@@ -48,7 +48,6 @@ public:
 public Q_SLOTS:
     void osdProgress(const QString &icon, int percent, const int maximumPercent, const QString &additionalText);
     void osdText(const QString &icon, const QString &additionalText);
-    void resetFocus();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -62,7 +61,6 @@ private Q_SLOTS:
     void getFocus();
     void markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view);
     void graceLockEnded();
-    void handleApplicationStateChanged(Qt::ApplicationState state);
 
 private:
     void initialize();
@@ -92,9 +90,5 @@ private:
 
     KPackage::Package m_wallpaperPackage;
     ShellIntegration *m_shellIntegration;
-
-    QPoint m_lastCursorPos;
-    QScreen *m_lastCursorScreen = nullptr;
-    Qt::ApplicationState m_previousApplicationState = Qt::ApplicationActive;
 };
 } // namespace
