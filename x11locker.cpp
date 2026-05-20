@@ -415,8 +415,9 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
                 qCDebug(KSCREENLOCKER) << "Unknown toplevel for MapNotify";
             }
             m_lockWindows.removeAll(xu->window);
-            if (m_focusedLockWindow == xu->event && !m_lockWindows.empty()) {
+            if (m_focusedLockWindow == xu->window && !m_lockWindows.empty()) {
                 // The currently focused window vanished, just focus the first one in the list
+                qCDebug(KSCREENLOCKER) << "Focused window" << xu->window << "vanished, focusing" << m_lockWindows[0];
                 fakeFocusIn(m_lockWindows[0]);
             }
             ret = true;
