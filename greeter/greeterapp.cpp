@@ -320,7 +320,6 @@ void UnlockApp::initialViewSetup()
     for (QScreen *screen : screens()) {
         handleScreen(screen);
     }
-    connect(this, &UnlockApp::screenAdded, this, &UnlockApp::handleScreen);
 }
 
 void UnlockApp::handleScreen(QScreen *screen)
@@ -369,13 +368,6 @@ void UnlockApp::handleScreen(QScreen *screen)
     } else {
         qCWarning(KSCREENLOCKER_GREET) << "createViewForScreen returned nullptr for screen:" << screen->name();
     }
-    connect(this, &QGuiApplication::screenRemoved, view, [this, view, screen](QScreen *removedScreen) {
-        if (removedScreen != screen) {
-            return;
-        }
-        m_views.removeOne(view);
-        delete view;
-    });
 }
 
 PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *screen)
