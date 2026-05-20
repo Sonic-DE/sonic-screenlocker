@@ -8,6 +8,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QDateTime>
 #include <QFile>
 #include <QFileDevice>
+#include <QFileInfo>
+#include <QLoggingCategory>
 #include <QMessageLogger>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -19,7 +21,7 @@ static const QString s_logFileBackupPath = QStringLiteral("/var/log/sonic/screen
 
 static bool s_logRotationDone = false;
 
-static void rotateLogFile()
+inline void rotateLogFile()
 {
     if (s_logRotationDone) {
         return; // Only do this once per application run
@@ -41,12 +43,12 @@ static void rotateLogFile()
     logFile.rename(s_logFileBackupPath);
 }
 
-static bool isJournalctlAvailable()
+inline bool isJournalctlAvailable()
 {
     return !QStandardPaths::findExecutable(QStringLiteral("journalctl")).isEmpty();
 }
 
-static void ensureLogFileExists()
+inline void ensureLogFileExists()
 {
     // Only check/create the file, not the directory (directory is created at install time)
     QFile logFile(s_logFilePath);
@@ -58,7 +60,7 @@ static void ensureLogFileExists()
     }
 }
 
-static void fileMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+inline void fileMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
     ensureLogFileExists();
     QFile logFile(s_logFilePath);
@@ -90,10 +92,19 @@ static void fileMessageHandler(QtMsgType type, const QMessageLogContext &context
     }
 }
 
-static void installFileLogger()
+[[maybe_unused]] inline void installFileLogger()
 {
     // Rotate log file once per application run
     rotateLogFile();
+
+    // Disable Qt internal debug messages at the source
+    QLoggingCategory::setFilterRules(
+        QStringLiteral("qt.qpa.*.debug=false\n"
+                       "qt.qpa.input.*.debug=false\n"
+                       "qt.qpa.xcb.*.debug=false\n"
+                       "qt.qpa.events.*.debug=false\n"
+                       "qt.qpa.screen.*.debug=false\n"
+                       "qt.qml.*.debug=false"));
 
     if (isJournalctlAvailable()) {
         // journald is available, don't install a custom handler
