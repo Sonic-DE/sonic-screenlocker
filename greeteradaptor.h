@@ -18,6 +18,7 @@ class KSldApp;
 class GreeterAdaptor : public QObject
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kde.screensaver.Greeter")
 
 public:
     explicit GreeterAdaptor(ScreenLocker::KSldApp *parent);
@@ -30,8 +31,6 @@ public Q_SLOTS:
     void GetFocus(const QString &screenName);
 
 Q_SIGNALS:
-    void ScreenAdded(const QString &screenName, int x, int y, int width, int height);
-    void ScreenRemoved(const QString &screenName);
     void LockRequested();
     void UnlockRequested();
 

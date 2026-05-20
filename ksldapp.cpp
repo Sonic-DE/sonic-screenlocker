@@ -393,6 +393,10 @@ void KSldApp::registerGreeterWindow(uint winId, const QString &screenName)
 {
     // Store the window ID for later grab management
     m_greeterWindows.insert(winId, screenName);
+    // Tell the lock window to allow this window
+    if (m_lockWindow) {
+        m_lockWindow->addAllowedWindow(winId);
+    }
 }
 
 void KSldApp::unregisterGreeterWindow(uint winId)
@@ -408,18 +412,6 @@ void KSldApp::greeterAuthenticationSuccess()
 void KSldApp::greeterGetFocus(const QString &screenName)
 {
     // Focus is managed by the greeter itself, but we log it here
-    Q_UNUSED(screenName);
-}
-
-void KSldApp::emitScreenAdded(const QString &screenName, const QRect &geometry)
-{
-    // Signal will be emitted via D-Bus through the adaptor
-    Q_UNUSED(screenName);
-    Q_UNUSED(geometry);
-}
-
-void KSldApp::emitScreenRemoved(const QString &screenName)
-{
     Q_UNUSED(screenName);
 }
 
