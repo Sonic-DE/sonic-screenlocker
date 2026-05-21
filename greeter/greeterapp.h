@@ -10,9 +10,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QGuiApplication>
 #include <QUrl>
 
-// Forward declaration for D-Bus interface
-class OrgKdeScreensaverGreeterInterface;
-
 namespace PlasmaQuick
 {
 class QuickViewSharedEngine;
@@ -23,6 +20,7 @@ class Authenticator;
 struct org_kde_ksld;
 
 class PamAuthenticators;
+class GreeterIpcClient;
 
 namespace ScreenLocker
 {
@@ -73,8 +71,7 @@ private:
     QWindow *getActiveScreen();
     void logViewHealth();
 
-    // D-Bus communication with KSldApp
-    OrgKdeScreensaverGreeterInterface *m_ksldInterface = nullptr;
+    // IPC communication methods with KSldApp
     void registerViewWithKsld(PlasmaQuick::QuickViewSharedEngine *view);
     void unregisterViewFromKsld(PlasmaQuick::QuickViewSharedEngine *view);
     void notifyAuthenticationSuccess();
@@ -98,5 +95,8 @@ private:
 
     KPackage::Package m_wallpaperPackage;
     ShellIntegration *m_shellIntegration;
+
+    // Custom IPC client for communicating with KSldApp
+    GreeterIpcClient *m_ipcClient = nullptr;
 };
 } // namespace

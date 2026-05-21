@@ -21,7 +21,7 @@ class LogindIntegration;
 class QTimer;
 class KSldTest;
 class PowerManagementInhibition;
-class GreeterAdaptor;
+class GreeterIpcServer;
 
 namespace ScreenLocker
 {
@@ -476,9 +476,9 @@ private:
     QHash<uint, QString> m_greeterWindows;
 
     /**
-     * D-Bus adaptor for greeter communication.
+     * Custom IPC server for greeter communication.
      */
-    GreeterAdaptor *m_greeterAdaptor = nullptr;
+    GreeterIpcServer *m_ipcServer = nullptr;
 
     // for auto tests
     friend KSldTest;

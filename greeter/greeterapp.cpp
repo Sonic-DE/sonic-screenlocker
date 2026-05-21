@@ -5,14 +5,12 @@ SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "greeterapp.h"
+#include "greeteripcclient.h"
 #include "kscreensaversettingsbase.h"
 #include "noaccessnetworkaccessmanagerfactory.h"
 #include "powermanagement.h"
 #include "shell_integration.h"
 #include "wallpaper_integration.h"
-
-// D-Bus interface to KSldApp
-#include "ksldgreeterinterface.h"
 
 #include <config-kscreenlocker.h>
 #include <iostream>
@@ -122,8 +120,6 @@ public:
 // App
 UnlockApp::UnlockApp(int &argc, char **argv)
     : QGuiApplication(argc, argv)
-    , m_ksldInterface(
-          new OrgKdeScreensaverGreeterInterface(QStringLiteral("org.kde.screensaver"), QStringLiteral("/Greeter"), QDBusConnection::sessionBus(), this))
     , m_resetRequestIgnoreTimer(new QTimer(this))
     , m_delayedLockTimer(nullptr)
     , m_testing(false)
@@ -144,6 +140,19 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     initialize();
     installNativeEventFilter(new FocusOutEventFilter);
 
+    // Initialize custom IPC client for communication with KSldApp
+    m_ipcClient = new GreeterIpcClient(this);
+    m_ipcClient->connectToHost();
+    connect(m_ipcClient, &GreeterIpcClient::connected, this, []() {
+        qCDebug(KSCREENLOCKER_GREET) << "Connected to KSldApp via custom IPC";
+    });
+    connect(m_ipcClient, &GreeterIpcClient::disconnected, this, []() {
+        qCDebug(KSCREENLOCKER_GREET) << "Disconnected from KSldApp via custom IPC";
+    });
+    connect(m_ipcClient, &GreeterIpcClient::connectionError, this, [](const QString &error) {
+        qCCritical(KSCREENLOCKER_GREET) << "Custom IPC connection error:" << error;
+    });
+
     // Connect to screenAdded to handle screens coming back after power cycle
     connect(this, &QGuiApplication::screenAdded, this, [this](QScreen *screen) {
         if (screen->geometry().isNull()) {
@@ -157,42 +166,15 @@ UnlockApp::UnlockApp(int &argc, char **argv)
         handleScreen(screen);
     });
 
-    // Connect to screenRemoved to immediately clean up views referencing the removed screen
+    // Connect to screenRemoved to clean up views referencing the removed screen
     connect(this, &QGuiApplication::screenRemoved, this, [this](QScreen *screen) {
-        // Immediately remove any views that reference the removed screen
-        // This must happen BEFORE the handleScreen cleanup to prevent race conditions
-        QList<PlasmaQuick::QuickViewSharedEngine *> viewsToRemove;
+        // Find and remove the view for this screen
         for (auto *view : std::as_const(m_views)) {
             if (view->screen() == screen) {
-                viewsToRemove << view;
+                m_views.removeOne(view);
+                delete view;
+                break;
             }
-        }
-
-        for (auto *view : viewsToRemove) {
-            m_views.removeOne(view);
-            // Disconnect all signal/slot connections from the view to prevent dangling signals
-            QObject::disconnect(view, nullptr, nullptr, nullptr);
-            // Hide the view before deleting to prevent any grab attempts on it
-            view->hide();
-            view->setKeyboardGrabEnabled(false);
-            delete view;
-        }
-
-        // Re-establish keyboard grabs on all remaining views after screen removal
-        // This is required because X11 may have lost the grab state when the screen was removed
-        for (auto *view : std::as_const(m_views)) {
-            view->raise();
-            if (!m_testing) {
-                view->setKeyboardGrabEnabled(true);
-            }
-        }
-        // Also re-grab the active screen
-        QWindow *activeScreen = getActiveScreen();
-        if (activeScreen) {
-            if (!m_testing) {
-                activeScreen->setKeyboardGrabEnabled(true);
-            }
-            activeScreen->requestActivate();
         }
     });
 }
@@ -394,7 +376,7 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
         view->setFlags(Qt::X11BypassWindowManagerHint);
     }
 
-    if (m_ksldInterface) {
+    if (m_ipcClient) {
         view->create();
     }
 
@@ -516,8 +498,12 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
 
 void UnlockApp::markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view)
 {
-    QQmlProperty showProperty(view->rootObject(), QStringLiteral("viewVisible"));
-    showProperty.write(true);
+    if (view->rootObject()) {
+        QQmlProperty showProperty(view->rootObject(), QStringLiteral("viewVisible"));
+        showProperty.write(true);
+    } else {
+        qCWarning(KSCREENLOCKER_GREET) << "  rootObject is NULL!";
+    }
     // random state update, actually rather required on init only
     QMetaObject::invokeMethod(this, "getFocus", Qt::QueuedConnection);
 
@@ -547,70 +533,50 @@ void UnlockApp::getFocus()
     }
     // this loop is required to make the qml/graphicsscene properly handle the
     // shared keyboard input ie. "type something into the box of every greeter"
-    int viewIndex = 0;
     for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
-        // Check if view has a valid X11 window before attempting grab
-        WId winId = view->winId();
-        if (winId == 0) {
-            viewIndex++;
-            continue;
-        }
-
         // Raise all views to ensure they are on top after screen wake
         view->raise();
         if (!m_testing) {
-            // Check X11 connection state before grab
-            Display *dpy = XOpenDisplay(nullptr);
-            if (dpy) {
-                // Check if the window still exists in X11
-                Window root, parent;
-                Window *children;
-                unsigned int nchildren;
-                bool windowExists = XQueryTree(dpy, winId, &root, &parent, &children, &nchildren);
-                if (children) {
-                    XFree(children);
-                }
-                XCloseDisplay(dpy);
-            }
             view->setKeyboardGrabEnabled(true);
         }
-        viewIndex++;
     }
     // activate window and grab input to be sure it really ends up there.
     // focus setting is still required for proper internal QWidget state (and eg.
     // visual reflection)
     if (!m_testing) {
-        activeScreen->setKeyboardGrabEnabled(true); // TODO - check whether this still works in master!
+        activeScreen->setKeyboardGrabEnabled(true);
     }
     activeScreen->requestActivate();
 }
 
 void UnlockApp::registerViewWithKsld(PlasmaQuick::QuickViewSharedEngine *view)
 {
-    if (!view || !m_ksldInterface) {
+    if (!view) {
+        qCWarning(KSCREENLOCKER_GREET) << "registerViewWithKsld: view is null, skipping";
+        return;
+    }
+    if (!m_ipcClient) {
+        qCWarning(KSCREENLOCKER_GREET) << "registerViewWithKsld: IPC client not available, skipping registration for winId=" << view->winId();
         return;
     }
     QString screenName = view->screen() ? view->screen()->name() : QString();
-    qCDebug(KSCREENLOCKER_GREET) << "Registering view with KSldApp: winId=" << view->winId() << "screen=" << screenName;
-    m_ksldInterface->RegisterWindow(view->winId(), screenName);
+    m_ipcClient->registerWindow(view->winId(), screenName);
 }
 
 void UnlockApp::unregisterViewFromKsld(PlasmaQuick::QuickViewSharedEngine *view)
 {
-    if (!view || !m_ksldInterface) {
+    if (!view || !m_ipcClient) {
         return;
     }
-    qCDebug(KSCREENLOCKER_GREET) << "Unregistering view from KSldApp: winId=" << view->winId();
-    m_ksldInterface->UnregisterWindow(view->winId());
+    m_ipcClient->unregisterWindow(view->winId());
 }
 
 void UnlockApp::notifyAuthenticationSuccess()
 {
-    if (!m_ksldInterface) {
+    if (!m_ipcClient) {
         return;
     }
-    qCDebug(KSCREENLOCKER_GREET) << "Notifying KSldApp of authentication success via D-Bus";
-    m_ksldInterface->AuthenticationSuccess();
+    m_ipcClient->reportAuthenticationSuccess();
 }
 
 void UnlockApp::graceLockEnded()

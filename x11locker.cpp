@@ -436,12 +436,6 @@ bool X11Locker::nativeEventFilter(const QByteArray &eventType, void *message, qi
                 info.window = xc->window;
                 info.viewable = false;
                 m_windowInfo.append(info);
-
-                // During locking, add new top-level windows as allowed windows (except our own background window).
-                if (xc->window != m_background->winId()) {
-                    qCDebug(KSCREENLOCKER) << "Adding window as allowed (greeter window):" << xc->window;
-                    addAllowedWindow(xc->window);
-                }
             }
             ret = true;
         }
@@ -544,14 +538,40 @@ void X11Locker::updateGeo()
 void X11Locker::addAllowedWindow(quint32 window)
 {
     m_allowedWindows << window;
+
     // test whether it's to show
     const int index = findWindowInfo(window);
-    if (index == -1 || !m_windowInfo[index].viewable) {
+    if (index == -1) {
+        // Window not tracked in m_windowInfo (e.g. registered via D-Bus after
+        // the Wayland removal, or created before X11Locker started tracking).
+        // Query X11 directly to check if it is already viewable.
+        XWindowAttributes attr;
+        Status status = XGetWindowAttributes(X11Info::display(), window, &attr);
+        if (status && attr.map_state == IsViewable) {
+            if (!m_lockWindows.contains(window)) {
+                if (!m_background->isVisible()) {
+                    m_background->show();
+                    Q_EMIT lockWindowShown();
+                }
+                if (m_lockWindows.empty()) {
+                    m_focusedLockWindow = XCB_WINDOW_NONE;
+                    fakeFocusIn(window);
+                }
+                m_lockWindows.prepend(window);
+                stayOnTop();
+            }
+        } else {
+            qCDebug(KSCREENLOCKER) << "addAllowedWindow: window NOT viewable, MapNotify will handle it later";
+        }
+        // Don't return here: we already added to m_allowedWindows so MapNotify will
+        // handle it if the window isn't viewable yet.
         return;
     }
-    if (m_lockWindows.contains(window)) {
-        qCDebug(KSCREENLOCKER) << "uhoh! duplicate!";
-    } else {
+    if (!m_windowInfo[index].viewable) {
+        qCDebug(KSCREENLOCKER) << "addAllowedWindow: window in m_windowInfo but not viewable, returning";
+        return;
+    }
+    if (!m_lockWindows.contains(window)) {
         if (!m_background->isVisible()) {
             // not yet shown and we have a lock window, so we show our own window
             m_background->show();

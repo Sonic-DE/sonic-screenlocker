@@ -152,7 +152,6 @@ add_definitions(-DTRANSLATION_DOMAIN=\"kscreenlocker\")
 
 set(screensaver_dbusXML dbus/org.freedesktop.ScreenSaver.xml)
 set(kscreensaver_dbusXML dbus/org.kde.screensaver.xml)
-set(greeter_dbusXML dbus/org.kde.screensaver.Greeter.xml)
 set(powerdevilpolicyagent_xml dbus/kf6_org.kde.Solid.PowerManagement.PolicyAgent.xml)
 
 set(ksld_SRCS
@@ -163,7 +162,7 @@ set(ksld_SRCS
    x11locker.cpp
    logind.cpp
    powermanagement_inhibition.cpp
-   greeteradaptor.cpp
+   greeteripcserver.cpp
    abstractlocker.h
    ksldapp.h
    interface.h
@@ -171,7 +170,7 @@ set(ksld_SRCS
    x11locker.h
    logind.h
    powermanagement_inhibition.h
-   greeteradaptor.h
+   greeteripcserver.h
 )
 
 ecm_qt_declare_logging_category(ksld_SRCS
@@ -298,14 +297,6 @@ install(FILES ${screensaver_dbusXML}
 
 install(FILES ${kscreensaver_dbusXML}
         DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR})
-
-install(FILES ${greeter_dbusXML}
-        DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR})
-
-# Install D-Bus service file
-configure_file(dbus/org.kde.screensaver.service.in ${CMAKE_CURRENT_BINARY_DIR}/dbus/org.kde.screensaver.service @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/dbus/org.kde.screensaver.service
-        DESTINATION ${KDE_INSTALL_DBUSSERVICEDIR})
 
 if(BUILD_TESTING)
    add_subdirectory(autotests)

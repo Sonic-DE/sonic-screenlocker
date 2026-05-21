@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "ksldapp.h"
 #include "filelogger.h"
 #include "globalaccel.h"
-#include "greeteradaptor.h"
+#include "greeteripcserver.h"
 #include "interface.h"
 #include "kscreensaversettings.h"
 #include "logind.h"
@@ -167,8 +167,22 @@ void KSldApp::initialize()
 
     initializeX11();
 
-    // Create the D-Bus adaptor for greeter communication
-    m_greeterAdaptor = new GreeterAdaptor(this);
+    // Initialize custom IPC server for greeter communication
+    m_ipcServer = new GreeterIpcServer(this);
+    if (!m_ipcServer->initialize()) {
+        qCWarning(KSCREENLOCKER) << "Failed to initialize IPC server";
+        delete m_ipcServer;
+        m_ipcServer = nullptr;
+    } else {
+        // Connect IPC server signals to KSldApp slots
+        connect(m_ipcServer, &GreeterIpcServer::greeterWindowRegistered, this, &KSldApp::registerGreeterWindow);
+        connect(m_ipcServer, &GreeterIpcServer::greeterWindowUnregistered, this, &KSldApp::unregisterGreeterWindow);
+        connect(m_ipcServer, &GreeterIpcServer::greeterAuthenticationSuccess, this, &KSldApp::greeterAuthenticationSuccess);
+        connect(m_ipcServer, &GreeterIpcServer::greeterGetFocusRequested, this, &KSldApp::greeterGetFocus);
+
+        // Set environment variable for greeter to find the IPC socket
+        m_greeterEnv.insert(QStringLiteral("KSCREENLOCKER_IPC_SOCKET"), GreeterIpcServer::socketName());
+    }
 
     // Global keys - only register if kglobalaccel service is available
     if (KAuthorized::authorizeAction(QStringLiteral("lock_screen"))) {
