@@ -83,7 +83,7 @@ void GreeterIpcServer::handleDataAvailable(QLocalSocket *clientSocket)
     QDataStream in(clientSocket);
 
     // Read message header: messageType + messageId
-    while (clientSocket->bytesAvailable() >= sizeof(quint32) * 2) {
+    while (clientSocket->bytesAvailable() >= static_cast<qint64>(sizeof(quint64))) {
         quint32 messageType;
         quint32 messageId;
         in >> messageType >> messageId;

@@ -93,7 +93,7 @@ void GreeterIpcClient::handleDataAvailable()
 
     QDataStream in(m_socket);
 
-    while (m_socket->bytesAvailable() >= sizeof(quint32) * 2) {
+    while (m_socket->bytesAvailable() >= static_cast<qint64>(sizeof(quint64))) {
         quint32 messageType;
         quint32 messageId;
         in >> messageType >> messageId;
@@ -131,6 +131,8 @@ void GreeterIpcClient::handleDataAvailable()
 
 void GreeterIpcClient::sendMessage(quint32 messageType, QDataStream &data)
 {
+    Q_UNUSED(data);
+
     if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
         qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot send message" << messageType;
         return;
