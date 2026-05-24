@@ -429,6 +429,11 @@ void KSldApp::greeterGetFocus(const QString &screenName)
     Q_UNUSED(screenName);
 }
 
+void KSldApp::setWaylandFd(int fd)
+{
+    Q_UNUSED(fd);
+}
+
 void KSldApp::configure()
 {
     qCDebug(KSCREENLOCKER) << "Configuring";

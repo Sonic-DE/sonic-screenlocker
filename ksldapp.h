@@ -260,6 +260,11 @@ public:
      */
     void emitScreenRemoved(const QString &screenName);
 
+    // ABI compat no-op: KDE's libkwin.so.6 still imports this symbol;
+    // without it, dlopen of org/kde/kwin/private/effects/libeffectsplugin.so
+    // fails and the Cover Switch + Flip Switch task switcher effects break.
+    void setWaylandFd(int fd);
+
 Q_SIGNALS:
 
     /**
