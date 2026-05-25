@@ -67,26 +67,27 @@ inline void fileMessageHandler(QtMsgType type, const QMessageLogContext &context
     if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&logFile);
         const QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
-        const char *typeStr = "";
+        QString typeStr;
         switch (type) {
-        case QtDebugMsg:
-            typeStr = "DEBUG";
-            break;
         case QtInfoMsg:
-            typeStr = "INFO";
+            typeStr = QStringLiteral("(II) ");
+            break;
+        case QtDebugMsg:
+            typeStr = QStringLiteral("(DD) ");
             break;
         case QtWarningMsg:
-            typeStr = "WARNING";
+            typeStr = QStringLiteral("(WW) ");
             break;
         case QtCriticalMsg:
-            typeStr = "CRITICAL";
-            break;
         case QtFatalMsg:
-            typeStr = "FATAL";
+            typeStr = QStringLiteral("(EE) ");
+            break;
+        default:
+            typeStr = QStringLiteral("");
             break;
         }
         const QString category = context.category ? QStringLiteral("%1").arg(context.category) : QStringLiteral("unknown");
-        out << timestamp << " [" << typeStr << "] [" << category << "] " << msg << "\n";
+        out << timestamp << " " << typeStr << "[" << category << "] " << msg << "\n";
         out.flush();
         logFile.close();
     }
