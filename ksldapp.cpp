@@ -7,12 +7,12 @@
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "ksldapp.h"
-#include "filelogger.h"
 #include "globalaccel.h"
 #include "greeteripcserver.h"
 #include "interface.h"
 #include "kscreensaversettings.h"
 #include "logind.h"
+#include "messagehandler.h"
 #include "powermanagement_inhibition.h"
 #include "x11locker.h"
 
@@ -156,10 +156,14 @@ void KSldApp::initializeX11()
     XSetScreenSaver(X11Info::display(), 0, s_XInterval, s_XBlanking, s_XExposures);
 }
 
+static void KSldMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    messageHandler(type, QStringLiteral("KSLDAPP"), msg);
+}
+
 void KSldApp::initialize()
 {
-    // Install file logger: uses journald if available, otherwise writes to /var/log/sonic/screenlocker.log
-    installFileLogger();
+    qInstallMessageHandler(KSldMessageHandler);
 
     qCDebug(KSCREENLOCKER) << "Initializing";
 

@@ -14,8 +14,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <signal.h>
 
-#include "filelogger.h"
 #include "greeterapp.h"
+#include "messagehandler.h"
 
 #include <config-kscreenlocker.h>
 #include <kscreenlocker_greet_logging.h>
@@ -56,6 +56,11 @@ static void signalHandler(int signum)
     }
 }
 
+static void GreeterMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    messageHandler(type, QStringLiteral("KSCREENLOCKER_GREET"), msg);
+}
+
 int main(int argc, char *argv[])
 {
     sigset_t blockedSignals;
@@ -73,8 +78,7 @@ int main(int argc, char *argv[])
     procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
 #endif
 
-    // Install file logger: uses journald if available, otherwise writes to /var/log/sonic/screenlocker.log
-    installFileLogger();
+    qInstallMessageHandler(GreeterMessageHandler);
 
     qCDebug(KSCREENLOCKER_GREET) << "Greeter is starting up.";
 
