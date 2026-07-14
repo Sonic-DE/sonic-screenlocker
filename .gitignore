@@ -5,3 +5,4 @@
 .cache
 CMakeLists.txt.user
 /build*
+.ccls-cache
