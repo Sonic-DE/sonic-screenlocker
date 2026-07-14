@@ -1,4 +1,3 @@
-.clang-format
 /compile_commands.json
 .clangd
 .idea
