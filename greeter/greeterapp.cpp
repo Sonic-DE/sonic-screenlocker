@@ -131,13 +131,7 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     , m_noLock(false)
     , m_shellIntegration(new ShellIntegration(this))
 {
-    auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SERVICE), KUser().loginName());
-    std::vector<std::unique_ptr<PamAuthenticator>> noninteractive;
-    noninteractive.push_back(
-        std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_FINGERPRINT_SERVICE), KUser().loginName(), PamAuthenticator::Fingerprint));
-    noninteractive.push_back(
-        std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SMARTCARD_SERVICE), KUser().loginName(), PamAuthenticator::Smartcard));
-    m_authenticators = new PamAuthenticators(std::move(interactive), std::move(noninteractive), this);
+    m_authenticators = new PamAuthenticators(KUser().loginName(), this);
     initialize();
     installNativeEventFilter(new FocusOutEventFilter);
 
@@ -387,12 +381,9 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
         if (m_authenticators->isUnlocked()) {
             // Notify KSldApp via D-Bus
             notifyAuthenticationSuccess();
-            // Quit without exit handlers
-            // This is because:
-            // - the pam_unix backend will always report a failed login if we complete
-            // the converse method no matter what exit code we use
-            // - the fprintd backend sometimes takes a long time
-            _exit(0);
+            // Mind that we can quit properly. All the blocking PAM tech is in subprocesses that will get reaped either
+            // by destructors or by themselves once they notice we are gone.
+            qApp->quit();
         } else {
             qCWarning(KSCREENLOCKER_GREET) << "Greeter tried to quit without being unlocked";
         }
