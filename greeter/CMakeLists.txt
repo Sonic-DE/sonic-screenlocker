@@ -4,13 +4,19 @@ add_definitions(-DTRANSLATION_DOMAIN=\"kscreenlocker_greet\")
 include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
 )
+
+add_subdirectory(worker)
 
 set(kscreenlocker_authenticator_SRCS
     pamauthenticators.cpp
     pamauthenticators.h
     pamauthenticator.cpp
     pamauthenticator.h
+    pamauthenticatormodel.cpp
+    pamworker.cpp
+    pamauthenticatordescriptor.cpp
 )
 
 ecm_qt_declare_logging_category(kscreenlocker_authenticator_SRCS
@@ -25,9 +31,13 @@ set(kscreenlocker_greet_SRCS
    greeterapp.cpp
    main.cpp
    noaccessnetworkaccessmanagerfactory.cpp
+   greeteripcclient.cpp
+   powermanagement.cpp
    ../logind.cpp
    greeterapp.h
    noaccessnetworkaccessmanagerfactory.h
+   greeteripcclient.h
+   powermanagement.h
    ../logind.h
 )
 
@@ -39,11 +49,20 @@ ecm_qt_declare_logging_category(kscreenlocker_greet_SRCS
     EXPORT KSCREENLOCKER
 )
 
+set_source_files_properties(worker/org.kde.plasma.screenlocker.worker.xml PROPERTIES INCLUDE "result.h")
+qt_add_dbus_interface(kscreenlocker_authenticator_SRCS worker/org.kde.plasma.screenlocker.worker.xml org.kde.plasma.screenlocker.worker)
+qt_add_dbus_adaptor(kscreenlocker_authenticator_SRCS worker/org.kde.plasma.screenlocker.xml pamworker.h PamWorker)
+
 add_library(kscreenlocker_authenticator OBJECT ${kscreenlocker_authenticator_SRCS})
 target_link_libraries(kscreenlocker_authenticator
+    WorkerResult
     Qt::Core
     Qt::Qml
+    Qt::DBus
     ${PAM_LIBRARIES}
+    KF6::CoreAddons
+    KF6::ConfigCore
+    KF6::I18n
 )
 
 qt_add_resources(kscreenlocker_greet_SRCS fallbacktheme.qrc)
@@ -66,30 +85,13 @@ target_link_libraries(kscreenlocker_greet PRIVATE
     Qt::DBus
     Qt::Quick
     Qt::Qml
-    LayerShellQt::Interface
+    Qt::Network
+    X11::X11
+    XCB::XCB
     KF6::ScreenDpms
 )
 
-# KSCREENLOCKER_PAM_SERVICE, if defined, will already have been
-# enclosed in double quotes by the define_pam_service macro.
-if (NOT DEFINED KSCREENLOCKER_PAM_PASSWORD_SERVICE)
-  set(KSCREENLOCKER_PAM_PASSWORD_SERVICE "\"kde\"")
-endif()
-
-if (NOT DEFINED KSCREENLOCKER_PAM_FINGERPRINT_SERVICE)
-  set(KSCREENLOCKER_PAM_FINGERPRINT_SERVICE "\"kde-fingerprint\"")
-endif()
-
-if (NOT DEFINED KSCREENLOCKER_PAM_SMARTCARD_SERVICE)
-  set(KSCREENLOCKER_PAM_SMARTCARD_SERVICE "\"kde-smartcard\"")
-endif()
-
-target_compile_definitions(kscreenlocker_greet PRIVATE
-    KCHECKPASS_BIN="kcheckpass"
-    KSCREENLOCKER_PAM_SERVICE=${KSCREENLOCKER_PAM_SERVICE}
-    KSCREENLOCKER_PAM_FINGERPRINT_SERVICE=${KSCREENLOCKER_PAM_FINGERPRINT_SERVICE}
-    KSCREENLOCKER_PAM_SMARTCARD_SERVICE=${KSCREENLOCKER_PAM_SMARTCARD_SERVICE}
-)
+add_dependencies(kscreenlocker_greet kscreenlocker_worker)
 
 qt_generate_foreign_qml_types(kscreenlocker_authenticator kscreenlocker_greet)
 
@@ -103,6 +105,5 @@ qt6_query_qml_module(kscreenlocker_greet
 
 install(FILES "${qml_module_qmldir}"   DESTINATION ${KDE_INSTALL_QMLDIR}/${qml_module_target_path})
 install(FILES "${qml_module_typeinfo}" DESTINATION ${KDE_INSTALL_QMLDIR}/${qml_module_target_path})
-
 
 install(TARGETS kscreenlocker_greet DESTINATION ${KDE_INSTALL_LIBEXECDIR})

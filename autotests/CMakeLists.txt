@@ -42,6 +42,7 @@ if (PamWrapper_FOUND AND NOT "$ENV{KDECI_BUILD}" STREQUAL "TRUE")
     set(PamFailureDelayTestModule "${CMAKE_CURRENT_BINARY_DIR}/pam_failure_delay_test_module${CMAKE_SHARED_MODULE_SUFFIX}")
     configure_file(data/failure_delay_test.in "${PamTestServiceDir}/failure_delay_test")
     add_executable(pamTest pamtest.cpp)
+    add_dependencies(pamTest kscreenlocker_worker)
     target_link_libraries(pamTest Qt::Test kscreenlocker_authenticator)
     target_compile_definitions(pamTest PRIVATE
         PAM_TEST_SERVICE_DIR="${PamTestServiceDir}"
@@ -57,8 +58,9 @@ if (PamWrapper_FOUND AND NOT "$ENV{KDECI_BUILD}" STREQUAL "TRUE")
 
     add_executable(pamDelayTest pamdelaytest.cpp)
     target_link_libraries(pamDelayTest Qt::Test kscreenlocker_authenticator)
+    target_include_directories(pamDelayTest PRIVATE "${CMAKE_BINARY_DIR}/greeter")
     target_compile_definitions(pamDelayTest PRIVATE PAM_TEST_SERVICE_DIR="${PamTestServiceDir}")
-    add_dependencies(pamDelayTest pam_failure_delay_test_module)
+    add_dependencies(pamDelayTest pam_failure_delay_test_module kscreenlocker_worker)
     add_test(NAME ksmserver-pamDelayTest COMMAND pamDelayTest)
     ecm_mark_as_test(pamDelayTest)
     set_tests_properties(ksmserver-pamDelayTest PROPERTIES
@@ -68,7 +70,7 @@ if (PamWrapper_FOUND AND NOT "$ENV{KDECI_BUILD}" STREQUAL "TRUE")
 
     add_executable(pamAuthenticatorsTest pamauthenticatorstest.cpp)
     target_link_libraries(pamAuthenticatorsTest Qt::Test kscreenlocker_authenticator)
-    add_dependencies(pamAuthenticatorsTest pam_failure_delay_test_module)
+    add_dependencies(pamAuthenticatorsTest pam_failure_delay_test_module kscreenlocker_worker)
     add_test(NAME ksmserver-pamAuthenticatorsTest COMMAND pamAuthenticatorsTest)
     ecm_mark_as_test(pamAuthenticatorsTest)
     set_tests_properties(ksmserver-pamAuthenticatorsTest PROPERTIES
@@ -79,7 +81,7 @@ if (PamWrapper_FOUND AND NOT "$ENV{KDECI_BUILD}" STREQUAL "TRUE")
     if(NOT KSCREENLOCKER_HAVE_PAM_FAIL_DELAY)
         add_executable(pamNativeDelayTest pamnativedelaytest.cpp)
         target_link_libraries(pamNativeDelayTest Qt::Test kscreenlocker_authenticator)
-        add_dependencies(pamNativeDelayTest pam_failure_delay_test_module)
+        add_dependencies(pamNativeDelayTest pam_failure_delay_test_module kscreenlocker_worker)
         add_test(NAME ksmserver-pamNativeDelayTest COMMAND pamNativeDelayTest)
         ecm_mark_as_test(pamNativeDelayTest)
         set_tests_properties(ksmserver-pamNativeDelayTest PROPERTIES

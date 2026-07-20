@@ -29,6 +29,7 @@ include(GenerateExportHeader)
 include(KDEClangFormat)
 include(KDEGitCommitHooks)
 include(ECMDeprecationSettings)
+include(ECMQmlModule)
 
 include(CheckIncludeFile)
 include(CheckSymbolExists)
@@ -43,7 +44,7 @@ add_feature_info("prctl/procctl tracing control"
                  CAN_DISABLE_PTRACE
                  "Required for disallowing ptrace on greeter and kcheckpass process")
 
-find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Widgets Quick Test)
+find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Network Widgets Quick Test)
 
 if (Qt6Gui_VERSION VERSION_GREATER_EQUAL "6.10.0")
     find_package(Qt6GuiPrivate ${REQUIRED_QT_VERSION} REQUIRED NO_MODULE)
