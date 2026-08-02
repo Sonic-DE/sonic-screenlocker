@@ -217,7 +217,7 @@ target_compile_definitions(KScreenLocker PRIVATE
 
 target_link_libraries(KScreenLocker PRIVATE X11::Xi)
 
-target_include_directories(KScreenLocker INTERFACE "$<INSTALL_INTERFACE:${KSLD_INCLUDEDIR}>")
+target_include_directories(KScreenLocker INTERFACE "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}>")
 
 # Needed to compile on Arm target.
 set_target_properties(KScreenLocker PROPERTIES COMPILE_FLAGS "-fPIC")
@@ -300,5 +300,4 @@ endif()
 ki18n_install(po)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
-
 
