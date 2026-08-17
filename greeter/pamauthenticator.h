@@ -7,15 +7,20 @@
 
 #pragma once
 
+#include <QDBusConnection>
+#include <QDBusContext>
+#include <QDBusMessage>
 #include <QObject>
-#include <QThread>
 #include <chrono>
 #include <memory>
 #include <vector>
 
-class PamWorker;
+class QDBusServer;
+class QProcess;
+class QTimer;
+class OrgKdePlasmaScreenlockerWorkerInterface;
 
-class PamAuthenticator : public QObject {
+class PamAuthenticator : public QObject, protected QDBusContext {
     Q_OBJECT
 
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
@@ -96,11 +101,25 @@ public Q_SLOTS:
     void tryUnlock();
     void respond(const QByteArray &response);
     void cancel();
+    void Ping(const QString &message);
+    [[nodiscard]] QString Prompt(const QString &msg);
+    [[nodiscard]] QString MaskedPrompt(const QString &msg);
+    void StartFailedDelay(uint useconds);
+    void InfoMessage(const QString &msg);
+    void ErrorMessage(const QString &msg);
 
 private:
     void setBusy(bool busy);
     void setInPasswordDelay(bool inPasswordDelay);
     void clearPromptState();
+    [[nodiscard]] QString promptInternal(const QString &msg, bool isSecret);
+    void quitWorkerProcess();
+    void startWorker();
+    void connectWorker(const QDBusConnection &connection);
+    void startDeferredAuthentication();
+    void scheduleDelayTimer();
+    void setUnavailable();
+    void handleFailedAuthentication();
 
     // NOTE Don't forget to reset in cancel as necessary
     QString m_prompt;
@@ -110,6 +129,7 @@ private:
     QString m_service;
     bool m_busy = false;
     bool m_authenticationRequested = false;
+    bool m_cancelling = false;
     bool m_unlocked = false;
     bool m_unavailable = false;
     bool m_inPasswordDelay = false;
@@ -118,22 +138,17 @@ private:
     bool m_hadPromptForRequest = false;
     uint m_failedCount = 0;
     std::chrono::steady_clock::time_point m_lastFailed;
+    std::chrono::steady_clock::time_point m_nextAttemptAllowedTime;
+    bool m_initialized = false;
+    bool m_inAuthenticate = false;
+    quint64 m_generation = 0;
+    QTimer *m_delayTimer = nullptr;
     NoninteractiveAuthenticatorTypes m_authenticatorType;
-    // Tiny problem with bare bones QThread: when we shut down we want to clean up
-    // our subprocess correctly, but doing that means running a function on the thread
-    // before terminating it. This doesn't work out of the box because there are
-    // no facilities to effectively invokeMethod while the QApplication is already
-    // mid shutdown. Instead we have a custom thread type that calls cleanup on the worker.
-    class WorkerThread : public QThread {
-    public:
-        WorkerThread(std::unique_ptr<PamWorker> &&worker, QObject *parent = nullptr);
-        [[nodiscard]] PamWorker *worker() const;
-        void run() override;
-
-    private:
-        std::unique_ptr<PamWorker> m_worker;
-    } m_thread;
-    PamWorker *d;
+    QDBusMessage m_pendingPrompt;
+    QDBusServer *m_server = nullptr;
+    std::unique_ptr<OrgKdePlasmaScreenlockerWorkerInterface> m_dbusWorker;
+    QProcess *m_workerProcess = nullptr;
+    QString m_user;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(PamAuthenticator::NoninteractiveAuthenticatorTypes)
