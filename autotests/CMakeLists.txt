@@ -59,7 +59,6 @@ if (PamWrapper_FOUND AND NOT "$ENV{KDECI_BUILD}" STREQUAL "TRUE")
 
     add_executable(pamDelayTest pamdelaytest.cpp)
     target_link_libraries(pamDelayTest Qt::Test kscreenlocker_authenticator)
-    target_include_directories(pamDelayTest PRIVATE "${CMAKE_BINARY_DIR}/greeter")
     target_compile_definitions(pamDelayTest PRIVATE PAM_TEST_SERVICE_DIR="${PamTestServiceDir}")
     add_dependencies(pamDelayTest pam_failure_delay_test_module kscreenlocker_worker)
     add_test(NAME ksmserver-pamDelayTest COMMAND pamDelayTest)
