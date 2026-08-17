@@ -7,7 +7,6 @@
 #include <QTest>
 
 #include "../greeter/pamauthenticator.h"
-#include "../greeter/pamworker.h"
 
 class PamDelayTest : public QObject {
     Q_OBJECT
@@ -18,6 +17,9 @@ private Q_SLOTS:
     void immediateRestartIsDeferred();
     void overlappingDelaysKeepLongestDeadline();
     void cancelAndRestartIgnoresStaleResponses();
+    void cancelDuringBusyNotificationCanRestart();
+    void cancelDuringPromptNotificationCanRestart();
+    void workerSlotsRejectDirectCalls();
     void repeatedWrongPasswordsRemainAvailable();
     void promptlessFailureLoopBecomesUnavailable();
 };
@@ -78,16 +80,16 @@ void PamDelayTest::immediateRestartIsDeferred()
 
 void PamDelayTest::overlappingDelaysKeepLongestDeadline()
 {
-    PamWorker worker(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
-    QSignalSpy delayChangedSpy(&worker, &PamWorker::inPasswordDelayChanged);
-    worker.StartFailedDelay(200000);
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy delayChangedSpy(&authenticator, &PamAuthenticator::inPasswordDelayChanged);
+    authenticator.StartFailedDelay(200000);
     QCOMPARE(delayChangedSpy.count(), 1);
-    QCOMPARE(delayChangedSpy.at(0).at(0).toBool(), true);
-    worker.StartFailedDelay(10000);
+    QVERIFY(authenticator.inPasswordDelay());
+    authenticator.StartFailedDelay(10000);
     QTest::qWait(50);
     QCOMPARE(delayChangedSpy.count(), 1);
     QTRY_COMPARE_WITH_TIMEOUT(delayChangedSpy.count(), 2, 1000);
-    QCOMPARE(delayChangedSpy.at(1).at(0).toBool(), false);
+    QVERIFY(!authenticator.inPasswordDelay());
 }
 
 void PamDelayTest::cancelAndRestartIgnoresStaleResponses()
@@ -134,6 +136,54 @@ void PamDelayTest::repeatedWrongPasswordsRemainAvailable()
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
 }
 
+void PamDelayTest::cancelDuringBusyNotificationCanRestart()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy cancelledSpy(&authenticator, &PamAuthenticator::authenticationCancelled);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    const auto connection = connect(&authenticator, &PamAuthenticator::busyChanged, &authenticator, [&] {
+        if (authenticator.isBusy()) {
+            authenticator.cancel();
+        }
+    });
+
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(cancelledSpy.count(), 1, 2000);
+    QCOMPARE(promptSpy.count(), 0);
+    QCOMPARE(succeededSpy.count(), 0);
+    QVERIFY(!authenticator.isUnavailable());
+    disconnect(connection);
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::cancelDuringPromptNotificationCanRestart()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy cancelledSpy(&authenticator, &PamAuthenticator::authenticationCancelled);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    const auto connection = connect(&authenticator, &PamAuthenticator::promptReadyChanged, &authenticator, [&] {
+        if (authenticator.isPromptReady()) {
+            authenticator.cancel();
+        }
+    });
+
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(cancelledSpy.count(), 1, 2000);
+    QCOMPARE(promptSpy.count(), 0);
+    QCOMPARE(succeededSpy.count(), 0);
+    QVERIFY(!authenticator.isPromptReady());
+    disconnect(connection);
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
 void PamDelayTest::promptlessFailureLoopBecomesUnavailable()
 {
     PamAuthenticator authenticator(QStringLiteral("promptless_failure_test"), QStringLiteral("test_user"));
@@ -155,6 +205,22 @@ void PamDelayTest::promptlessFailureLoopBecomesUnavailable()
     QCOMPARE(authenticator.currentRequestId(), lastRequest);
     QTest::qWait(50);
     QCOMPARE(failedSpy.count(), 4);
+}
+
+void PamDelayTest::workerSlotsRejectDirectCalls()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
+    authenticator.Ping(QStringLiteral("not a D-Bus call"));
+    QCOMPARE(authenticator.Prompt(QStringLiteral("fake prompt")), QString());
+    QCOMPARE(authenticator.MaskedPrompt(QStringLiteral("fake prompt")), QString());
+    QCOMPARE(promptSpy.count(), 1);
+    QVERIFY(authenticator.isPromptReady());
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
 }
 
 QTEST_GUILESS_MAIN(PamDelayTest)
