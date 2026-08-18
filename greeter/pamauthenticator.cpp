@@ -45,6 +45,11 @@ bool PamAuthenticator::isBusy() const
     return m_busy;
 }
 
+bool PamAuthenticator::isReady() const
+{
+    return m_ready;
+}
+
 bool PamAuthenticator::isAvailable() const
 {
     return !m_unavailable;
@@ -80,6 +85,14 @@ void PamAuthenticator::setBusy(bool busy)
     if (m_busy != busy) {
         m_busy = busy;
         Q_EMIT busyChanged();
+    }
+}
+
+void PamAuthenticator::setReady(bool ready)
+{
+    if (m_ready != ready) {
+        m_ready = ready;
+        Q_EMIT readyChanged();
     }
 }
 
@@ -255,21 +268,24 @@ QString PamAuthenticator::service() const
 
 void PamAuthenticator::Ping(const QString &)
 {
-    if (!calledFromDBus() || !m_dbusWorker || connection().name() != m_dbusWorker->connection().name() || m_initialized) {
+    if (!calledFromDBus() || !m_dbusWorker || connection().name() != m_dbusWorker->connection().name() || m_initialized || m_starting) {
         return;
     }
     const auto generation = m_generation;
+    m_starting = true;
     auto watcher = new QDBusPendingCallWatcher(m_dbusWorker->Start(m_service, m_user), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
-        if (generation != m_generation) {
+        if (generation != m_generation || m_unavailable) {
             return;
         }
+        m_starting = false;
         if (watcher->error().isValid()) {
             setUnavailable();
             return;
         }
         m_initialized = true;
+        setReady(true);
         startDeferredAuthentication();
     });
 }
@@ -366,7 +382,10 @@ void PamAuthenticator::setUnavailable()
     m_unavailable = true;
     m_authenticationRequested = false;
     m_inAuthenticate = false;
+    m_initialized = false;
+    m_starting = false;
     clearPromptState();
+    setReady(false);
     setBusy(false);
     Q_EMIT availableChanged();
 }
@@ -375,8 +394,10 @@ void PamAuthenticator::quitWorkerProcess()
 {
     ++m_generation;
     m_initialized = false;
+    m_starting = false;
     m_inAuthenticate = false;
     m_pendingPrompt = {};
+    setReady(false);
     setBusy(false);
     if (m_workerProcess) {
         m_workerProcess->disconnect(this);
