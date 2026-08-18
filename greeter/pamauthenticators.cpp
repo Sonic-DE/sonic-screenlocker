@@ -159,6 +159,11 @@ void PamAuthenticators::onAuthenticatorChanged()
 void PamAuthenticators::connectAuthenticators()
 {
     auto interactive = d->interactive.get();
+    if (!interactive) {
+        d->recomputeNoninteractiveAuthenticationTypes();
+        Q_EMIT authenticatorTypesChanged();
+        return;
+    }
     connect(interactive, &PamAuthenticator::succeeded, this, [this] {
         clearPendingResponse("authentication succeeded");
         d->cancelNoninteractive();
