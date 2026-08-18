@@ -18,9 +18,39 @@ private:
     }
 
 private Q_SLOTS:
+    void missingAuthenticatorIsSafe();
     void queuedResponseWaitsForDelayAndPrompt();
     void ownerDestructionAndSuspendDiscardResponse();
 };
+
+void PamAuthenticatorsTest::missingAuthenticatorIsSafe()
+{
+    PamAuthenticators authenticators(std::unique_ptr<PamAuthenticator>{}, std::vector<std::unique_ptr<PamAuthenticator>>{});
+    QObject owner;
+    QSignalSpy succeededSpy(&authenticators, &PamAuthenticators::succeeded);
+    QVERIFY(!authenticators.isBusy());
+    QVERIFY(!authenticators.inPasswordDelay());
+    QVERIFY(authenticators.prompt().isEmpty());
+    QVERIFY(authenticators.promptForSecret().isEmpty());
+    QVERIFY(authenticators.infoMessage().isEmpty());
+    QVERIFY(authenticators.errorMessage().isEmpty());
+    QVERIFY(!authenticators.isUnlocked());
+    QVERIFY(!authenticators.hasPendingResponse());
+    QCOMPARE(authenticators.authenticatorTypes(), PamAuthenticator::NoninteractiveAuthenticatorTypes(PamAuthenticator::None));
+    authenticators.startAuthenticating();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
+    QVERIFY(!authenticators.submitResponse(QStringLiteral("my_password"), &owner));
+    authenticators.respond(QByteArrayLiteral("my_password"));
+    authenticators.discardPendingResponse();
+    authenticators.stopAuthenticating();
+    authenticators.setSuspended(true);
+    authenticators.setSuspended(false);
+    authenticators.setGraceLocked(true);
+    authenticators.setGraceLocked(false);
+    authenticators.cancel();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
+    QCOMPARE(succeededSpy.count(), 0);
+}
 
 void PamAuthenticatorsTest::queuedResponseWaitsForDelayAndPrompt()
 {
