@@ -22,6 +22,7 @@ PamAuthenticator::PamAuthenticator(const QString &service, const QString &user, 
             return;
         }
         m_prompt = msg;
+        m_hadPromptForRequest = true;
         m_promptReady = true;
         Q_EMIT promptReadyChanged();
         Q_EMIT prompt(msg);
@@ -31,6 +32,7 @@ PamAuthenticator::PamAuthenticator(const QString &service, const QString &user, 
             return;
         }
         m_promptForSecret = msg;
+        m_hadPromptForRequest = true;
         m_promptReady = true;
         Q_EMIT promptReadyChanged();
         Q_EMIT promptForSecret(msg);
@@ -66,6 +68,24 @@ PamAuthenticator::PamAuthenticator(const QString &service, const QString &user, 
         }
         clearPromptState();
         m_authenticationRequested = false;
+
+        // Stop retry loops from broken services that never issue a prompt, such as pam-u2f
+        // without a token. Ordinary wrong-password attempts must not disable the password backend.
+        if (m_hadPromptForRequest) {
+            m_failedCount = 0;
+        } else {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - m_lastFailed < std::chrono::seconds(2)) {
+                ++m_failedCount;
+            } else {
+                m_failedCount = 1;
+            }
+            m_lastFailed = now;
+            if (m_failedCount >= 4) {
+                m_unavailable = true;
+                Q_EMIT availableChanged();
+            }
+        }
         Q_EMIT failed();
     });
     connect(d, &PamWorker::authenticationCancelled, this, [this](quint64 requestId) {
@@ -142,6 +162,7 @@ void PamAuthenticator::tryUnlock()
         return;
     }
     m_authenticationRequested = true;
+    m_hadPromptForRequest = false;
     clearPromptState();
     const quint64 requestId = ++m_requestId;
     QMetaObject::invokeMethod(

@@ -8,8 +8,13 @@
 #include <cstdlib>
 #include <cstring>
 
-PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int, int, const char **)
+PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int, int argc, const char **argv)
 {
+    if (argc > 0 && std::strcmp(argv[0], "promptless") == 0) {
+        pam_fail_delay(pamh, 10000);
+        return PAM_AUTH_ERR;
+    }
+
     const pam_conv *conversation = nullptr;
     if (pam_get_item(pamh, PAM_CONV, reinterpret_cast<const void **>(&conversation)) != PAM_SUCCESS || !conversation || !conversation->conv) {
         return PAM_SYSTEM_ERR;
