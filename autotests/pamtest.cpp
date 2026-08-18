@@ -41,11 +41,15 @@ PamTest::PamTest()
 void PamTest::testLogin()
 {
     PamAuthenticator auth(QStringLiteral("test_service"), QStringLiteral("test_user"));
+    QSignalSpy readySpy(&auth, &PamAuthenticator::readyChanged);
     QSignalSpy promptSpy(&auth, &PamAuthenticator::prompt);
     QSignalSpy promptForSecretSpy(&auth, &PamAuthenticator::promptForSecret);
     QSignalSpy succeededSpy(&auth, &PamAuthenticator::succeeded);
     QSignalSpy failedSpy(&auth, &PamAuthenticator::failed);
     QSignalSpy busyChangedSpy(&auth, &PamAuthenticator::busyChanged);
+
+    QVERIFY(auth.isReady() || readySpy.wait());
+    QVERIFY(auth.isReady());
 
     // invalid password
     auth.tryUnlock();
