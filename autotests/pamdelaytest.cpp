@@ -18,6 +18,8 @@ private Q_SLOTS:
     void immediateRestartIsDeferred();
     void overlappingDelaysKeepLongestDeadline();
     void cancelAndRestartIgnoresStaleResponses();
+    void repeatedWrongPasswordsRemainAvailable();
+    void promptlessFailureLoopBecomesUnavailable();
 };
 
 void PamDelayTest::initTestCase()
@@ -108,6 +110,51 @@ void PamDelayTest::cancelAndRestartIgnoresStaleResponses()
     QCOMPARE(succeededSpy.count(), 0);
     authenticator.respond(QByteArrayLiteral("my_password"));
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::repeatedWrongPasswordsRemainAvailable()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy failedSpy(&authenticator, &PamAuthenticator::failed);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+
+    for (int attempt = 1; attempt <= 5; ++attempt) {
+        authenticator.tryUnlock();
+        QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), attempt, 2000);
+        authenticator.respond(QByteArrayLiteral("wrong"));
+        QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), attempt, 1000);
+        QVERIFY(authenticator.isAvailable());
+        QVERIFY(!authenticator.isUnavailable());
+    }
+
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 6, 2000);
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::promptlessFailureLoopBecomesUnavailable()
+{
+    PamAuthenticator authenticator(QStringLiteral("promptless_failure_test"), QStringLiteral("test_user"));
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::prompt);
+    QSignalSpy secretPromptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy failedSpy(&authenticator, &PamAuthenticator::failed);
+    QSignalSpy availableSpy(&authenticator, &PamAuthenticator::availableChanged);
+    connect(&authenticator, &PamAuthenticator::failed, &authenticator, &PamAuthenticator::tryUnlock);
+
+    authenticator.tryUnlock();
+    QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 4, 2000);
+    QVERIFY(authenticator.isUnavailable());
+    QVERIFY(!authenticator.isUnlocked());
+    QCOMPARE(availableSpy.count(), 1);
+    QCOMPARE(promptSpy.count(), 0);
+    QCOMPARE(secretPromptSpy.count(), 0);
+    const auto lastRequest = authenticator.currentRequestId();
+    authenticator.tryUnlock();
+    QCOMPARE(authenticator.currentRequestId(), lastRequest);
+    QTest::qWait(50);
+    QCOMPARE(failedSpy.count(), 4);
 }
 
 QTEST_GUILESS_MAIN(PamDelayTest)

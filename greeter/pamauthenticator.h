@@ -9,6 +9,7 @@
 
 #include <QObject>
 #include <QThread>
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -114,6 +115,9 @@ private:
     bool m_inPasswordDelay = false;
     bool m_promptReady = false;
     quint64 m_requestId = 0;
+    bool m_hadPromptForRequest = false;
+    uint m_failedCount = 0;
+    std::chrono::steady_clock::time_point m_lastFailed;
     NoninteractiveAuthenticatorTypes m_authenticatorType;
     // Tiny problem with bare bones QThread: when we shut down we want to clean up
     // our subprocess correctly, but doing that means running a function on the thread
