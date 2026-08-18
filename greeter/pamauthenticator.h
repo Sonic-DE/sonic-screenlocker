@@ -23,6 +23,7 @@ class OrgKdePlasmaScreenlockerWorkerInterface;
 class PamAuthenticator : public QObject, protected QDBusContext {
     Q_OBJECT
 
+    Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool available READ isAvailable NOTIFY availableChanged)
     Q_PROPERTY(bool inPasswordDelay READ inPasswordDelay NOTIFY inPasswordDelayChanged)
@@ -63,6 +64,7 @@ public:
         A busy Authenticator probably won't be able to act on further tryUnlock calls.
      */
     bool isBusy() const;
+    bool isReady() const;
 
     /*!
         Whether the Authenticator has successfully completed tryUnlock. i.e. the PAM service actually unlocked the account
@@ -84,6 +86,7 @@ public:
     QString service() const;
 
 Q_SIGNALS:
+    void readyChanged();
     void busyChanged();
     void promptForSecret(const QString &msg);
     void prompt(const QString &msg);
@@ -110,6 +113,7 @@ public Q_SLOTS:
 
 private:
     void setBusy(bool busy);
+    void setReady(bool ready);
     void setInPasswordDelay(bool inPasswordDelay);
     void clearPromptState();
     [[nodiscard]] QString promptInternal(const QString &msg, bool isSecret);
@@ -127,6 +131,7 @@ private:
     QString m_errorMessage;
     QString m_infoMessage;
     QString m_service;
+    bool m_ready = false;
     bool m_busy = false;
     bool m_authenticationRequested = false;
     bool m_cancelling = false;
@@ -140,6 +145,7 @@ private:
     std::chrono::steady_clock::time_point m_lastFailed;
     std::chrono::steady_clock::time_point m_nextAttemptAllowedTime;
     bool m_initialized = false;
+    bool m_starting = false;
     bool m_inAuthenticate = false;
     quint64 m_generation = 0;
     QTimer *m_delayTimer = nullptr;
