@@ -270,26 +270,13 @@ QString PamAuthenticator::service() const
 
 void PamAuthenticator::Ping(const QString &)
 {
-    if (!calledFromDBus() || !m_dbusWorker || connection().name() != m_dbusWorker->connection().name() || m_initialized || m_starting) {
+    if (!calledFromDBus() || !m_dbusWorker || connection().name() != m_dbusWorker->connection().name() || m_initialized || m_unavailable || m_cancelling) {
         return;
     }
-    const auto generation = m_generation;
-    m_starting = true;
-    auto watcher = new QDBusPendingCallWatcher(m_dbusWorker->Start(m_user), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation] {
-        watcher->deleteLater();
-        if (generation != m_generation || m_unavailable) {
-            return;
-        }
-        m_starting = false;
-        if (watcher->error().isValid()) {
-            setUnavailable();
-            return;
-        }
-        m_initialized = true;
-        setReady(true);
-        startDeferredAuthentication();
-    });
+    // The worker initializes PAM and registers its object before sending Ping.
+    m_initialized = true;
+    setReady(true);
+    startDeferredAuthentication();
 }
 
 QString PamAuthenticator::Prompt(const QString &msg)
@@ -385,7 +372,6 @@ void PamAuthenticator::setUnavailable()
     m_authenticationRequested = false;
     m_inAuthenticate = false;
     m_initialized = false;
-    m_starting = false;
     clearPromptState();
     setReady(false);
     setBusy(false);
@@ -396,7 +382,6 @@ void PamAuthenticator::quitWorkerProcess()
 {
     ++m_generation;
     m_initialized = false;
-    m_starting = false;
     m_inAuthenticate = false;
     m_pendingPrompt = {};
     setReady(false);
@@ -439,7 +424,7 @@ void PamAuthenticator::startWorker()
     m_workerProcess = new QProcess(this);
     m_workerProcess->setProcessChannelMode(QProcess::ForwardedChannels);
     m_workerProcess->setProgram(KLibexec::path(u"kscreenlocker_worker"_s));
-    m_workerProcess->setArguments({m_service});
+    m_workerProcess->setArguments({m_service, m_user});
     connect(m_workerProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         setUnavailable();
     });
