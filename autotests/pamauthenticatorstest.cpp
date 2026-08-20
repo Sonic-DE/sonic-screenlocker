@@ -19,6 +19,7 @@ private:
 
 private Q_SLOTS:
     void missingAuthenticatorIsSafe();
+    void earlySubmissionWaitsForWorkerReady();
     void queuedResponseWaitsForDelayAndPrompt();
     void ownerDestructionAndSuspendDiscardResponse();
 };
@@ -84,6 +85,23 @@ void PamAuthenticatorsTest::queuedResponseWaitsForDelayAndPrompt()
     QVERIFY(!authenticators->hasPendingResponse());
     QVERIFY(authenticators->isUnlocked());
     QVERIFY(pendingSpy.count() >= 4);
+}
+
+void PamAuthenticatorsTest::earlySubmissionWaitsForWorkerReady()
+{
+    auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QVERIFY(!interactive->isReady());
+    PamAuthenticators authenticators(std::move(interactive), std::vector<std::unique_ptr<PamAuthenticator>>{});
+    QObject owner;
+    QSignalSpy succeededSpy(&authenticators, &PamAuthenticators::succeeded);
+    authenticators.startAuthenticating();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Authenticating);
+    QVERIFY(authenticators.submitResponse(QStringLiteral("my_password"), &owner));
+    QVERIFY(authenticators.hasPendingResponse());
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 2000);
+    QVERIFY(authenticators.isUnlocked());
+    QVERIFY(!authenticators.hasPendingResponse());
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
 }
 
 void PamAuthenticatorsTest::ownerDestructionAndSuspendDiscardResponse()
