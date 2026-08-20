@@ -275,7 +275,7 @@ void PamAuthenticator::Ping(const QString &)
     }
     const auto generation = m_generation;
     m_starting = true;
-    auto watcher = new QDBusPendingCallWatcher(m_dbusWorker->Start(m_service, m_user), this);
+    auto watcher = new QDBusPendingCallWatcher(m_dbusWorker->Start(m_user), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation || m_unavailable) {

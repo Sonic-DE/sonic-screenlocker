@@ -2,12 +2,34 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
+#include <QDBusMessage>
+#include <QDBusPendingReply>
+#include <QDBusServer>
 #include <QFileInfo>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTest>
+#include <optional>
 
 #include "../greeter/pamauthenticator.h"
+#include "../greeter/worker/result.h"
+
+class WorkerPeer : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kde.plasma.screenlocker")
+
+public Q_SLOTS:
+    void Ping(const QString &)
+    {
+        Q_EMIT pinged();
+    }
+    void StartFailedDelay(uint)
+    {
+    }
+
+Q_SIGNALS:
+    void pinged();
+};
 
 class PamDelayTest : public QObject {
     Q_OBJECT
@@ -15,6 +37,7 @@ class PamDelayTest : public QObject {
 private Q_SLOTS:
     void initTestCase();
     void propertyContract();
+    void workerInitializationProtocol();
     void earlyRequestWaitsForWorkerReady();
     void cancelQueuedRequestBeforeReady();
     void readyPropertyTracksWorkerLifecycle();
@@ -138,6 +161,59 @@ void PamDelayTest::earlyRequestWaitsForWorkerReady()
     QVERIFY(!promptBeforeReady);
     authenticator.respond(QByteArrayLiteral("my_password"));
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::workerInitializationProtocol()
+{
+    WorkerPeer peer;
+    QSignalSpy pingSpy(&peer, &WorkerPeer::pinged);
+    std::optional<QDBusConnection> connection;
+    QDBusServer server;
+    QVERIFY(server.isConnected());
+    bool registered = false;
+    connect(&server, &QDBusServer::newConnection, &peer, [&](const QDBusConnection &incoming) {
+        auto c = incoming;
+        registered = c.registerObject(QStringLiteral("/org/kde/plasma/screenlocker"), &peer, QDBusConnection::ExportAllSlots);
+        connection = c;
+    });
+
+    QProcess worker;
+    worker.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/kscreenlocker_worker"));
+    worker.setArguments({QStringLiteral("promptless_failure_test")});
+    worker.start();
+    worker.write(server.address().toUtf8());
+    worker.closeWriteChannel();
+    QTRY_VERIFY_WITH_TIMEOUT(connection.has_value(), 2000);
+    QVERIFY(registered);
+    QTRY_COMPARE_WITH_TIMEOUT(pingSpy.count(), 1, 2000);
+
+    const auto authenticate = QDBusMessage::createMethodCall(QString(),
+                                                             QStringLiteral("/org/kde/plasma/screenlocker/worker"),
+                                                             QStringLiteral("org.kde.plasma.screenlocker.worker"),
+                                                             QStringLiteral("Authenticate"));
+    QDBusPendingReply<int> beforeStart = connection->asyncCall(authenticate);
+    QTRY_VERIFY_WITH_TIMEOUT(beforeStart.isFinished(), 2000);
+    QVERIFY(!beforeStart.isError());
+    QCOMPARE(beforeStart.value(), static_cast<int>(WorkerResult::Unavailable));
+
+    auto start = QDBusMessage::createMethodCall(QString(),
+                                                QStringLiteral("/org/kde/plasma/screenlocker/worker"),
+                                                QStringLiteral("org.kde.plasma.screenlocker.worker"),
+                                                QStringLiteral("Start"));
+    // The service comes from argv; Start accepts only the username and must acknowledge initialization.
+    start.setArguments({QStringLiteral("test_user")});
+    QDBusPendingReply<> started = connection->asyncCall(start);
+    QTRY_VERIFY_WITH_TIMEOUT(started.isFinished(), 2000);
+    QVERIFY(!started.isError());
+    QDBusPendingReply<int> afterStart = connection->asyncCall(authenticate);
+    QTRY_VERIFY_WITH_TIMEOUT(afterStart.isFinished(), 2000);
+    QVERIFY(!afterStart.isError());
+    // The argv-selected fixture fails without a prompt; it is a valid initialized PAM stack.
+    QCOMPARE(afterStart.value(), static_cast<int>(WorkerResult::Failure));
+
+    worker.kill();
+    QVERIFY(worker.waitForFinished(2000));
+    QDBusConnection::disconnectFromPeer(connection->name());
 }
 
 void PamDelayTest::cancelQueuedRequestBeforeReady()
