@@ -38,6 +38,7 @@ private Q_SLOTS:
     void initTestCase();
     void propertyContract();
     void workerInitializationProtocol();
+    void invalidServiceFailsClosed();
     void earlyRequestWaitsForWorkerReady();
     void cancelQueuedRequestBeforeReady();
     void readyPropertyTracksWorkerLifecycle();
@@ -179,7 +180,7 @@ void PamDelayTest::workerInitializationProtocol()
 
     QProcess worker;
     worker.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/kscreenlocker_worker"));
-    worker.setArguments({QStringLiteral("promptless_failure_test")});
+    worker.setArguments({QStringLiteral("promptless_failure_test"), QStringLiteral("test_user")});
     worker.start();
     worker.write(server.address().toUtf8());
     worker.closeWriteChannel();
@@ -191,25 +192,21 @@ void PamDelayTest::workerInitializationProtocol()
                                                              QStringLiteral("/org/kde/plasma/screenlocker/worker"),
                                                              QStringLiteral("org.kde.plasma.screenlocker.worker"),
                                                              QStringLiteral("Authenticate"));
-    QDBusPendingReply<int> beforeStart = connection->asyncCall(authenticate);
-    QTRY_VERIFY_WITH_TIMEOUT(beforeStart.isFinished(), 2000);
-    QVERIFY(!beforeStart.isError());
-    QCOMPARE(beforeStart.value(), static_cast<int>(WorkerResult::Unavailable));
-
     auto start = QDBusMessage::createMethodCall(QString(),
                                                 QStringLiteral("/org/kde/plasma/screenlocker/worker"),
                                                 QStringLiteral("org.kde.plasma.screenlocker.worker"),
                                                 QStringLiteral("Start"));
-    // The service comes from argv; Start accepts only the username and must acknowledge initialization.
+    // Initialization is complete before Ping; the old Start method must no longer be exposed.
     start.setArguments({QStringLiteral("test_user")});
-    QDBusPendingReply<> started = connection->asyncCall(start);
-    QTRY_VERIFY_WITH_TIMEOUT(started.isFinished(), 2000);
-    QVERIFY(!started.isError());
-    QDBusPendingReply<int> afterStart = connection->asyncCall(authenticate);
-    QTRY_VERIFY_WITH_TIMEOUT(afterStart.isFinished(), 2000);
-    QVERIFY(!afterStart.isError());
+    QDBusPendingReply<> obsoleteStart = connection->asyncCall(start);
+    QTRY_VERIFY_WITH_TIMEOUT(obsoleteStart.isFinished(), 2000);
+    QVERIFY(obsoleteStart.isError());
+    QCOMPARE(obsoleteStart.error().type(), QDBusError::UnknownMethod);
+    QDBusPendingReply<int> reply = connection->asyncCall(authenticate);
+    QTRY_VERIFY_WITH_TIMEOUT(reply.isFinished(), 2000);
+    QVERIFY(!reply.isError());
     // The argv-selected fixture fails without a prompt; it is a valid initialized PAM stack.
-    QCOMPARE(afterStart.value(), static_cast<int>(WorkerResult::Failure));
+    QCOMPARE(reply.value(), static_cast<int>(WorkerResult::Failure));
 
     worker.kill();
     QVERIFY(worker.waitForFinished(2000));
@@ -237,6 +234,19 @@ void PamDelayTest::cancelQueuedRequestBeforeReady()
     QVERIFY(authenticator.isReady());
     authenticator.respond(QByteArrayLiteral("my_password"));
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::invalidServiceFailsClosed()
+{
+    PamAuthenticator authenticator(QString(), QStringLiteral("test_user"));
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    connect(&authenticator, &PamAuthenticator::failed, &authenticator, &PamAuthenticator::tryUnlock);
+    authenticator.tryUnlock();
+    QTRY_VERIFY_WITH_TIMEOUT(authenticator.isUnavailable(), 2000);
+    QVERIFY(!authenticator.isReady());
+    QVERIFY(!authenticator.isUnlocked());
+    QVERIFY(!authenticator.isPromptReady());
+    QCOMPARE(succeededSpy.count(), 0);
 }
 
 void PamDelayTest::cancelDuringReadyNotificationCanRestart()
