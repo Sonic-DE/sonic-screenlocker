@@ -15,6 +15,8 @@ class PamDelayTest : public QObject {
 private Q_SLOTS:
     void initTestCase();
     void propertyContract();
+    void earlyRequestWaitsForWorkerReady();
+    void cancelQueuedRequestBeforeReady();
     void readyPropertyTracksWorkerLifecycle();
     void workerFailureClearsReady();
     void cancelDuringReadyNotificationCanRestart();
@@ -107,6 +109,56 @@ void PamDelayTest::readyPropertyTracksWorkerLifecycle()
     QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
     QVERIFY(authenticator.isReady());
     QCOMPARE(readySpy.count(), 3);
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::earlyRequestWaitsForWorkerReady()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy readySpy(&authenticator, &PamAuthenticator::readyChanged);
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    bool promptBeforeReady = false;
+    connect(&authenticator, &PamAuthenticator::promptForSecret, &authenticator, [&] {
+        promptBeforeReady |= !authenticator.isReady();
+    });
+
+    QVERIFY(!authenticator.isReady());
+    authenticator.tryUnlock();
+    const auto requestId = authenticator.currentRequestId();
+    QVERIFY(requestId > 0);
+    QVERIFY(!authenticator.isReady());
+    QVERIFY(!authenticator.isBusy());
+    QCOMPARE(promptSpy.count(), 0);
+    authenticator.tryUnlock();
+    QCOMPARE(authenticator.currentRequestId(), requestId);
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
+    QCOMPARE(readySpy.count(), 1);
+    QVERIFY(!promptBeforeReady);
+    authenticator.respond(QByteArrayLiteral("my_password"));
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::cancelQueuedRequestBeforeReady()
+{
+    PamAuthenticator authenticator(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QSignalSpy readySpy(&authenticator, &PamAuthenticator::readyChanged);
+    QSignalSpy promptSpy(&authenticator, &PamAuthenticator::promptForSecret);
+    QSignalSpy succeededSpy(&authenticator, &PamAuthenticator::succeeded);
+    QVERIFY(!authenticator.isReady());
+    authenticator.tryUnlock();
+    const auto cancelledRequest = authenticator.currentRequestId();
+    authenticator.cancel();
+    QTest::qWait(50);
+    QVERIFY(!authenticator.isReady());
+    QCOMPARE(readySpy.count(), 0);
+    QCOMPARE(promptSpy.count(), 0);
+    QCOMPARE(succeededSpy.count(), 0);
+    authenticator.tryUnlock();
+    QVERIFY(authenticator.currentRequestId() > cancelledRequest);
+    QTRY_COMPARE_WITH_TIMEOUT(promptSpy.count(), 1, 2000);
+    QVERIFY(authenticator.isReady());
     authenticator.respond(QByteArrayLiteral("my_password"));
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
 }
