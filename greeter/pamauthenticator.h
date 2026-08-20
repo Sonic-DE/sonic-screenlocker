@@ -145,7 +145,6 @@ private:
     std::chrono::steady_clock::time_point m_lastFailed;
     std::chrono::steady_clock::time_point m_nextAttemptAllowedTime;
     bool m_initialized = false;
-    bool m_starting = false;
     bool m_inAuthenticate = false;
     quint64 m_generation = 0;
     QTimer *m_delayTimer = nullptr;
