@@ -121,7 +121,9 @@ void PamAuthenticator::tryUnlock()
 
 void PamAuthenticator::startDeferredAuthentication()
 {
-    if (!m_initialized || !m_authenticationRequested || m_inAuthenticate || m_unavailable || std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
+    // Keep early requests queued, but never send Authenticate until the worker handshake completes.
+    if (!m_ready || !m_initialized || !m_dbusWorker || !m_authenticationRequested || m_inAuthenticate || m_unavailable
+        || std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
         return;
     }
     m_inAuthenticate = true;
