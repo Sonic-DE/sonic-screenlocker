@@ -13,6 +13,7 @@ class PAMAuthenticatorDescriptor : public QObject {
     Q_PROPERTY(bool passwordField MEMBER m_passwordField CONSTANT)
     Q_PROPERTY(bool expectingPrompt MEMBER m_expectingPrompt CONSTANT)
     Q_PROPERTY(QString tooltip MEMBER m_tooltip CONSTANT)
+    Q_PROPERTY(bool showPrompt MEMBER m_showPrompt CONSTANT)
     Q_PROPERTY(bool functional MEMBER m_functional NOTIFY functionalChanged)
 public:
     PAMAuthenticatorDescriptor() = default;
@@ -22,6 +23,7 @@ public:
                                         bool passwordField,
                                         bool expectingPrompt,
                                         const QString &tooltip,
+                                        bool showPrompt,
                                         QObject *parent = nullptr);
     [[nodiscard]] bool isEnabled() const;
     [[nodiscard]] PamAuthenticators::Authenticator type() const;
@@ -38,5 +40,6 @@ private:
     bool m_passwordField = false;
     bool m_expectingPrompt = false;
     QString m_tooltip;
+    bool m_showPrompt;
     bool m_functional = true; // always functional by default
 };
