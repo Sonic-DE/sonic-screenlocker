@@ -5,6 +5,12 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <array>
+#include <cstddef>
+#include <memory>
+#include <new>
+
+#include "../greeter/pamauthenticatordescriptor.h"
 #include "../greeter/pamauthenticators.h"
 
 class PamAuthenticatorsTest : public QObject {
@@ -18,11 +24,33 @@ private:
     }
 
 private Q_SLOTS:
+    void descriptorDefaultsAreInitialized();
     void missingAuthenticatorIsSafe();
     void earlySubmissionWaitsForWorkerReady();
     void queuedResponseWaitsForDelayAndPrompt();
     void ownerDestructionAndSuspendDiscardResponse();
 };
+
+void PamAuthenticatorsTest::descriptorDefaultsAreInitialized()
+{
+    // Default-initialize in prefilled storage so zeroed memory cannot hide missing initializers.
+    alignas(PAMAuthenticatorDescriptor) std::array<std::byte, sizeof(PAMAuthenticatorDescriptor)> storage;
+    storage.fill(std::byte{0xA5});
+    const auto destroy = [](PAMAuthenticatorDescriptor *descriptor) {
+        std::destroy_at(descriptor);
+    };
+    std::unique_ptr<PAMAuthenticatorDescriptor, decltype(destroy)> descriptor(::new (storage.data()) PAMAuthenticatorDescriptor, destroy);
+    QVERIFY(!descriptor->isEnabled());
+    QCOMPARE(descriptor->type(), PamAuthenticators::Authenticator::Regular);
+    QVERIFY(descriptor->isFunctional());
+    for (const auto property : {"passwordField", "expectingPrompt", "showPrompt"}) {
+        const auto value = descriptor->property(property);
+        QVERIFY(value.isValid());
+        QCOMPARE(value.toBool(), false);
+    }
+    QVERIFY(descriptor->property("iconName").toString().isEmpty());
+    QVERIFY(descriptor->property("tooltip").toString().isEmpty());
+}
 
 void PamAuthenticatorsTest::missingAuthenticatorIsSafe()
 {
