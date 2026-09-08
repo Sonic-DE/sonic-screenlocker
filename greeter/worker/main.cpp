@@ -360,7 +360,7 @@ int main(int argc, char *argv[])
         qCWarning(WORKER) << "Worker has no greeter parent, exiting.";
         return 1;
     }
-    const auto parentDeathSignal = dieWithParent();
+    const auto parentDeathSignal = PRCTLs::dieWithParent();
     if (!parentDeathSignal) {
         qCWarning(WORKER) << "Failed to set parent-death signal, errno:" << parentDeathSignal.error();
         return 1;
@@ -371,17 +371,11 @@ int main(int argc, char *argv[])
     }
 
     // Moving PAM into a subprocess must not undo the greeter's password/ptrace protection.
-#if HAVE_PR_SET_DUMPABLE
-    if (prctl(PR_SET_DUMPABLE, 0L) != 0) {
+    const auto dumpProtection = PRCTLs::setDumpable(false);
+    if (!dumpProtection) {
+        qCWarning(WORKER) << "Failed to disable worker dump/ptrace access, errno:" << dumpProtection.error();
         return 1;
     }
-#endif
-#if HAVE_PROC_TRACE_CTL
-    int mode = PROC_TRACE_CTL_DISABLE;
-    if (procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode) != 0) {
-        return 1;
-    }
-#endif
 
     QCoreApplication app(argc, argv);
 

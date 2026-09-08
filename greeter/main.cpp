@@ -19,14 +19,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <config-kscreenlocker.h>
 #include <kscreenlocker_greet_logging.h>
-
-#if HAVE_SYS_PRCTL_H
-#include <sys/prctl.h>
-#endif
-#if HAVE_SYS_PROCCTL_H
-#include <sys/procctl.h>
-#include <unistd.h>
-#endif
+#include <prctls.h>
 
 #include <KSignalHandler>
 
@@ -70,13 +63,9 @@ int main(int argc, char *argv[])
     pthread_sigmask(SIG_BLOCK, &blockedSignals, NULL);
 
     // disable ptrace on the greeter
-#if HAVE_PR_SET_DUMPABLE
-    prctl(PR_SET_DUMPABLE, 0);
-#endif
-#if HAVE_PROC_TRACE_CTL
-    int mode = PROC_TRACE_CTL_DISABLE;
-    procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
-#endif
+    if (!PRCTLs::setDumpable(false)) {
+        qCWarning(KSCREENLOCKER_GREET) << "Failed to disable ptrace on the greeter";
+    }
 
     qInstallMessageHandler(GreeterMessageHandler);
 
@@ -162,13 +151,9 @@ int main(int argc, char *argv[])
         }
 
         // allow ptrace if testing is enabled
-#if HAVE_PR_SET_DUMPABLE
-        prctl(PR_SET_DUMPABLE, 1);
-#endif
-#if HAVE_PROC_TRACE_CTL
-        int mode = PROC_TRACE_CTL_ENABLE;
-        procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
-#endif
+        if (!PRCTLs::setDumpable(true)) {
+            qCWarning(KSCREENLOCKER_GREET) << "Failed to enable ptrace on the testing greeter";
+        }
     } else {
         app.setImmediateLock(parser.isSet(immediateLockOption));
     }

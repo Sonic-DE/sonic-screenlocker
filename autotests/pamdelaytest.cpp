@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "../greeter/pamauthenticator.h"
+#include "../greeter/worker/prctls.h"
 #include "../greeter/worker/result.h"
 
 class WorkerPeer : public QObject {
@@ -41,6 +42,7 @@ class PamDelayTest : public QObject {
 private Q_SLOTS:
     void initTestCase();
     void propertyContract();
+    void prctlResultContract();
     void workerInitializationProtocol();
     void invalidWorkerInput_data();
     void invalidWorkerInput();
@@ -112,6 +114,22 @@ void PamDelayTest::immediateRestartIsDeferred()
     QCOMPARE(delayChangedSpy.count(), 2);
     authenticator.respond(QByteArrayLiteral("my_password"));
     QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 1000);
+}
+
+void PamDelayTest::prctlResultContract()
+{
+    // Exercise result normalization without modifying this test process's security flags.
+    const int savedErrno = errno;
+    errno = EACCES;
+    const auto failure = PRCTLs::_expecting(-1);
+    errno = EIO;
+    const auto zeroSuccess = PRCTLs::_expecting(0);
+    const auto otherSuccess = PRCTLs::_expecting(7);
+    errno = savedErrno;
+    QVERIFY(!failure);
+    QCOMPARE(failure.error(), EACCES);
+    QVERIFY(zeroSuccess);
+    QVERIFY(otherSuccess);
 }
 
 void PamDelayTest::readyPropertyTracksWorkerLifecycle()
