@@ -384,10 +384,14 @@ int main(int argc, char *argv[])
 
     std::string address = [] {
         std::string address;
-        std::getline(std::cin, address);
+        if (!std::getline(std::cin, address)) {
+            qCWarning(WORKER) << "Failed to read worker D-Bus address from stdin.";
+            return std::string{};
+        }
         return address;
     }();
     if (address.empty()) {
+        qCWarning(WORKER) << "Failed to read D-Bus address from stdin, exiting.";
         return 1;
     }
 

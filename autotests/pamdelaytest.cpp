@@ -7,9 +7,13 @@
 #include <QDBusServer>
 #include <QFileInfo>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSignalSpy>
 #include <QTest>
 #include <optional>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "../greeter/pamauthenticator.h"
 #include "../greeter/worker/result.h"
@@ -38,6 +42,8 @@ private Q_SLOTS:
     void initTestCase();
     void propertyContract();
     void workerInitializationProtocol();
+    void invalidWorkerInput_data();
+    void invalidWorkerInput();
     void invalidServiceFailsClosed();
     void earlyRequestWaitsForWorkerReady();
     void cancelQueuedRequestBeforeReady();
@@ -211,6 +217,49 @@ void PamDelayTest::workerInitializationProtocol()
     worker.kill();
     QVERIFY(worker.waitForFinished(2000));
     QDBusConnection::disconnectFromPeer(connection->name());
+}
+
+void PamDelayTest::invalidWorkerInput_data()
+{
+    QTest::addColumn<QByteArray>("input");
+    QTest::addColumn<bool>("unreadableStdin");
+    QTest::newRow("empty-eof") << QByteArray() << false;
+    QTest::newRow("blank-line") << QByteArrayLiteral("\n") << false;
+    QTest::newRow("read-error") << QByteArray() << true;
+}
+
+void PamDelayTest::invalidWorkerInput()
+{
+    QFETCH(QByteArray, input);
+    QFETCH(bool, unreadableStdin);
+    QProcess worker;
+    auto environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("QT_LOGGING_RULES"), QStringLiteral("kscreenlocker.worker*.warning=true"));
+    worker.setProcessEnvironment(environment);
+    worker.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/kscreenlocker_worker"));
+    worker.setArguments({QStringLiteral("failure_delay_test"), QStringLiteral("test_user")});
+    if (unreadableStdin) {
+        // Keep descriptor 0 occupied but unreadable so startup cannot reuse it for another resource.
+        worker.setChildProcessModifier([] {
+            const int fd = open("/dev/null", O_WRONLY);
+            if (fd == -1 || dup2(fd, STDIN_FILENO) == -1) {
+                _exit(99);
+            }
+            if (fd != STDIN_FILENO) {
+                close(fd);
+            }
+        });
+    }
+    worker.start();
+    if (!input.isEmpty()) {
+        worker.write(input);
+    }
+    worker.closeWriteChannel();
+    QVERIFY(worker.waitForStarted(2000));
+    QVERIFY(worker.waitForFinished(2000));
+    QCOMPARE(worker.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(worker.exitCode(), 1);
+    QVERIFY(worker.readAllStandardError().contains("Failed to read"));
 }
 
 void PamDelayTest::cancelQueuedRequestBeforeReady()
