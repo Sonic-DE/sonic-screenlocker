@@ -235,6 +235,7 @@ void PamDelayTest::invalidWorkerInput()
     QProcess worker;
     auto environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("QT_LOGGING_RULES"), QStringLiteral("kscreenlocker.worker*.warning=true"));
+    environment.insert(QStringLiteral("QT_MESSAGE_PATTERN"), QStringLiteral("%{category}: %{message}"));
     worker.setProcessEnvironment(environment);
     worker.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/kscreenlocker_worker"));
     worker.setArguments({QStringLiteral("failure_delay_test"), QStringLiteral("test_user")});
@@ -259,7 +260,9 @@ void PamDelayTest::invalidWorkerInput()
     QVERIFY(worker.waitForFinished(2000));
     QCOMPARE(worker.exitStatus(), QProcess::NormalExit);
     QCOMPARE(worker.exitCode(), 1);
-    QVERIFY(worker.readAllStandardError().contains("Failed to read"));
+    const auto diagnostics = worker.readAllStandardError();
+    QVERIFY(diagnostics.contains("Failed to read"));
+    QVERIFY(diagnostics.contains("kscreenlocker.worker.pam-failure_delay_test:"));
 }
 
 void PamDelayTest::cancelQueuedRequestBeforeReady()
