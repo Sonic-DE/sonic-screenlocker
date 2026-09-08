@@ -316,7 +316,17 @@ void Worker::startFailedDelay(uint useconds)
 int main(int argc, char *argv[])
 {
     const auto parentPid = getppid();
-    if (parentPid == 1 || dieWithParent() != 0 || getppid() != parentPid) {
+    if (parentPid == 1) {
+        qCWarning(WORKER) << "Worker has no greeter parent, exiting.";
+        return 1;
+    }
+    const auto parentDeathSignal = dieWithParent();
+    if (!parentDeathSignal) {
+        qCWarning(WORKER) << "Failed to set parent-death signal, errno:" << parentDeathSignal.error();
+        return 1;
+    }
+    if (getppid() != parentPid) {
+        qCWarning(WORKER) << "Greeter parent changed during worker startup, exiting.";
         return 1;
     }
 
