@@ -22,7 +22,6 @@ Dependencies:
     'frameworks/kxmlgui': '@latest-kf6'
     'frameworks/ksvg': '@latest-kf6'
     'plasma/libplasma': '@same'
-    'plasma/layer-shell-qt': '@same'
     'plasma/libkscreen': '@same'
 
 RuntimeDependencies:
