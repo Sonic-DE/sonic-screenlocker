@@ -118,6 +118,7 @@ Q_SIGNALS:
 private Q_SLOTS:
     void slotLocked();
     void slotUnlocked();
+    void slotLockFailed();
     void serviceUnregistered(const QString &name);
 
 private:
@@ -127,6 +128,6 @@ private:
     QDBusServiceWatcher *m_serviceWatcher;
     QList<InhibitRequest> m_requests;
     uint m_next_cookie;
-    QList<QDBusMessage> m_lockReplies;
+    QList<QDBusMessage> m_lockRequests;
 };
 }

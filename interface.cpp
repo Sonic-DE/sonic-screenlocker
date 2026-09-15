@@ -22,6 +22,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QDBusServiceWatcher>
 #include <QRandomGenerator>
 
+#include <utility>
+
 namespace ScreenLocker
 {
 const uint ChangeScreenSettings = 4;
@@ -94,6 +96,7 @@ Interface::Interface(KSldApp *parent)
     QDBusConnection::sessionBus().registerObject(QStringLiteral("/org/freedesktop/ScreenSaver"), this);
     connect(m_daemon, &KSldApp::locked, this, &Interface::slotLocked);
     connect(m_daemon, &KSldApp::unlocked, this, &Interface::slotUnlocked);
+    connect(m_daemon, &KSldApp::lockFailed, this, &Interface::slotLockFailed);
     connect(m_daemon, &KSldApp::aboutToLock, this, &Interface::AboutToLock);
 
     m_serviceWatcher->setConnection(QDBusConnection::sessionBus());
@@ -130,12 +133,13 @@ void Interface::Lock()
     if (!KAuthorized::authorizeAction(QStringLiteral("lock_screen"))) {
         return;
     }
-    m_daemon->lock(calledFromDBus() ? EstablishLock::Immediate : EstablishLock::Delayed);
-
-    if (calledFromDBus() && m_daemon->lockState() == KSldApp::AcquiringLock) {
-        m_lockReplies << message().createReply();
+    // Queue before lock(), which can finish synchronously. Already-locked calls use the normal reply.
+    if (calledFromDBus() && m_daemon->lockState() != KSldApp::Locked) {
+        m_lockRequests << message();
         setDelayedReply(true);
     }
+
+    m_daemon->lock(calledFromDBus() ? EstablishLock::Immediate : EstablishLock::Delayed);
 }
 
 bool Interface::SetActive(bool state)
@@ -222,13 +226,21 @@ void Interface::configure()
     m_daemon->configure();
 }
 
+void Interface::slotLockFailed()
+{
+    const auto requests = std::exchange(m_lockRequests, {});
+    for (const auto &request : requests) {
+        QDBusConnection::sessionBus().send(
+            request.createErrorReply(QStringLiteral("org.freedesktop.ScreenSaver.Error.LockFailed"), QStringLiteral("Failed to acquire X11 input grabs.")));
+    }
+}
+
 void Interface::sendLockReplies()
 {
-    for (const QDBusMessage &reply : std::as_const(m_lockReplies)) {
-        QDBusConnection::sessionBus().send(reply);
+    const auto requests = std::exchange(m_lockRequests, {});
+    for (const auto &request : requests) {
+        QDBusConnection::sessionBus().send(request.createReply());
     }
-
-    m_lockReplies.clear();
 }
 
 } // namespace
