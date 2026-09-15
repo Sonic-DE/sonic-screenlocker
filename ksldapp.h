@@ -267,6 +267,9 @@ Q_SIGNALS:
      */
     void aboutToLock();
 
+    /** Emitted when all attempts to acquire the X11 input grabs have failed. */
+    void lockFailed();
+
     /**
      * Emitted before the greeter is (re)started
      */

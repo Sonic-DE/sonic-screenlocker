@@ -470,6 +470,7 @@ void KSldApp::lock(EstablishLock establishLock, int attemptCount)
             });
         } else {
             qCCritical(KSCREENLOCKER) << "Could not establish screen lock";
+            Q_EMIT lockFailed();
         }
         return;
     }
