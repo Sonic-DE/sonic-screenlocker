@@ -5,13 +5,16 @@
 */
 
 #include "pamauthenticator.h"
+#include "config-kscreenlocker.h"
 
 #include <algorithm>
+#include <utility>
 
 #include <QDebug>
 #include <QEventLoop>
 #include <QMetaMethod>
 #include <QThread>
+#include <QTimer>
 #include <security/pam_appl.h>
 
 #include "kscreenlocker_greet_logging.h"
@@ -42,20 +45,24 @@ public:
     ~PamWorker() override;
     Q_DISABLE_COPY_MOVE(PamWorker)
     void start(const QString &service, const QString &user);
-    void authenticate();
+    void authenticate(quint64 requestId);
+    void respond(quint64 requestId, const QByteArray &response);
+    void cancel(quint64 requestId);
     void startFailedDelay(uint useconds);
 
 Q_SIGNALS:
     void busyChanged(bool busy);
-    void promptForSecret(const QString &msg);
-    void prompt(const QString &msg);
+    void promptForSecret(quint64 requestId, const QString &msg);
+    void prompt(quint64 requestId, const QString &msg);
     void infoMessage(const QString &msg);
     void errorMessage(const QString &msg);
-    void failed();
+    void failed(quint64 requestId);
+    void authenticationCancelled(quint64 requestId);
     void loginFailedDelayStarted(const uint uSecDelay);
-    void succeeded();
+    void succeeded(quint64 requestId);
     void unavailabilityChanged(bool unavailable);
     void inAuthenticateChanged(bool inAuthenticate);
+    void inPasswordDelayChanged(bool inPasswordDelay);
 
     // internal
     void promptResponseReceived(const QByteArray &prompt);
@@ -63,13 +70,24 @@ Q_SIGNALS:
 
 private:
     static int converse(int n, const struct pam_message **msg, struct pam_response **resp, void *data);
+    void scheduleDelayTimer();
+    void delayTimerExpired();
+    void startDeferredAuthentication();
 
     pam_handle_t *m_handle = nullptr; //< the actual PAM handle
     struct pam_conv m_conv;
 
     bool m_unavailable = false;
     bool m_inAuthenticate = false;
+    bool m_inPasswordDelay = false;
+    bool m_initialized = false;
+    bool m_cancelled = false;
+    bool m_waitingForResponse = false;
+    quint64 m_currentRequestId = 0;
+    quint64 m_waitingRequestId = 0;
+    quint64 m_deferredRequestId = 0;
     std::chrono::steady_clock::time_point m_nextAttemptAllowedTime;
+    QTimer *m_delayTimer = nullptr;
     int m_result = -1;
     QString m_service;
 };
@@ -86,6 +104,9 @@ int PamWorker::converse(int n, const struct pam_message **msg, struct pam_respon
     const auto nSize = narrow<size_t>(n);
 
     *resp = static_cast<struct pam_response *>(calloc(n, sizeof(struct pam_response)));
+    if (!*resp) {
+        return PAM_BUF_ERR;
+    }
     auto responses = std::span{*resp, nSize};
 
     auto messages = std::span{msg, nSize};
@@ -102,9 +123,13 @@ int PamWorker::converse(int n, const struct pam_message **msg, struct pam_respon
 
             const QString prompt = QString::fromLocal8Bit(pamMessage->msg);
             if (isSecret) {
-                Q_EMIT c->promptForSecret(prompt);
+                c->m_waitingForResponse = true;
+                c->m_waitingRequestId = c->m_currentRequestId;
+                Q_EMIT c->promptForSecret(c->m_currentRequestId, prompt);
             } else {
-                Q_EMIT c->prompt(prompt);
+                c->m_waitingForResponse = true;
+                c->m_waitingRequestId = c->m_currentRequestId;
+                Q_EMIT c->prompt(c->m_currentRequestId, prompt);
             }
 
             qCDebug(KSCREENLOCKER_GREET,
@@ -128,6 +153,8 @@ int PamWorker::converse(int n, const struct pam_message **msg, struct pam_respon
             qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Starting nested event loop to await response", qUtf8Printable(c->m_service));
             // We are in a non-gui thread. It should be mostly fine to exec() here.
             int rc = e.exec();
+            c->m_waitingForResponse = false;
+            c->m_waitingRequestId = 0;
             if (rc != 0) {
                 qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Nested event loop's exit code was not zero, bailing", qUtf8Printable(c->m_service));
                 return rc;
@@ -168,6 +195,10 @@ PamWorker::PamWorker()
     , m_conv({&PamWorker::converse, this})
     , m_nextAttemptAllowedTime(std::chrono::steady_clock::now())
 {
+    m_delayTimer = new QTimer(this);
+    m_delayTimer->setSingleShot(true);
+    m_delayTimer->setTimerType(Qt::PreciseTimer);
+    connect(m_delayTimer, &QTimer::timeout, this, &PamWorker::delayTimerExpired);
 }
 
 PamWorker::~PamWorker()
@@ -177,15 +208,25 @@ PamWorker::~PamWorker()
     }
 }
 
-void PamWorker::authenticate()
+void PamWorker::authenticate(quint64 requestId)
 {
-    if (m_inAuthenticate || m_unavailable) {
-        return;
-    } else if (std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
-        qCCritical(KSCREENLOCKER_GREET, "[PAM worker %s] Authentication attempt too soon. This shouldn't happen!", qUtf8Printable(m_service));
-        Q_EMIT failed();
+    Q_ASSERT(thread() == QThread::currentThread());
+    if (!m_initialized || m_unavailable) {
         return;
     }
+    if (m_inAuthenticate) {
+        m_deferredRequestId = requestId;
+        qCDebug(KSCREENLOCKER_GREET) << "[PAM worker] Authentication request deferred while PAM is active" << requestId;
+        return;
+    }
+    if (std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
+        m_deferredRequestId = requestId;
+        scheduleDelayTimer();
+        qCDebug(KSCREENLOCKER_GREET) << "[PAM worker] Authentication request deferred by PAM delay" << requestId;
+        return;
+    }
+    m_currentRequestId = requestId;
+    m_cancelled = false;
     m_inAuthenticate = true;
     Q_EMIT inAuthenticateChanged(m_inAuthenticate);
     qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Authenticate: Starting authentication", qUtf8Printable(m_service));
@@ -199,22 +240,102 @@ void PamWorker::authenticate()
     if (rc == PAM_SUCCESS) {
         pam_setcred(m_handle, PAM_REFRESH_CRED);
         /* ignore errors on refresh credentials. If this did not work we use the old ones. */
-        Q_EMIT succeeded();
+        Q_EMIT succeeded(requestId);
     } else if (rc == PAM_AUTHINFO_UNAVAIL || rc == PAM_MODULE_UNKNOWN) {
         m_unavailable = true;
         Q_EMIT unavailabilityChanged(m_unavailable);
     } else {
-        Q_EMIT failed();
+        if (m_cancelled) {
+            Q_EMIT authenticationCancelled(requestId);
+        } else {
+            Q_EMIT failed(requestId);
+        }
     }
     Q_EMIT busyChanged(false);
     m_inAuthenticate = false;
     Q_EMIT inAuthenticateChanged(m_inAuthenticate);
+    m_currentRequestId = 0;
+    startDeferredAuthentication();
 }
 
 void PamWorker::startFailedDelay(uint useconds)
 {
-    m_nextAttemptAllowedTime = std::chrono::steady_clock::now() + std::chrono::microseconds(useconds);
+    if (useconds == 0) {
+        return;
+    }
+    const auto requestedDeadline = std::chrono::steady_clock::now() + std::chrono::microseconds(useconds);
+    m_nextAttemptAllowedTime = std::max(m_nextAttemptAllowedTime, requestedDeadline);
+    if (!m_inPasswordDelay) {
+        m_inPasswordDelay = true;
+        Q_EMIT inPasswordDelayChanged(true);
+    }
+    scheduleDelayTimer();
     Q_EMIT loginFailedDelayStarted(useconds);
+}
+
+void PamWorker::scheduleDelayTimer()
+{
+    Q_ASSERT(thread() == QThread::currentThread());
+    const auto remaining = m_nextAttemptAllowedTime - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) {
+        delayTimerExpired();
+        return;
+    }
+    const auto milliseconds = std::chrono::ceil<std::chrono::milliseconds>(remaining);
+    m_delayTimer->start(std::max<qint64>(1, milliseconds.count()));
+}
+
+void PamWorker::delayTimerExpired()
+{
+    Q_ASSERT(thread() == QThread::currentThread());
+    if (std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
+        scheduleDelayTimer();
+        return;
+    }
+    if (m_inPasswordDelay) {
+        m_inPasswordDelay = false;
+        Q_EMIT inPasswordDelayChanged(false);
+    }
+    startDeferredAuthentication();
+}
+
+void PamWorker::startDeferredAuthentication()
+{
+    if (m_inAuthenticate || m_deferredRequestId == 0 || std::chrono::steady_clock::now() < m_nextAttemptAllowedTime) {
+        return;
+    }
+    const quint64 requestId = std::exchange(m_deferredRequestId, 0);
+    QMetaObject::invokeMethod(
+        this,
+        [this, requestId] {
+            authenticate(requestId);
+        },
+        Qt::QueuedConnection);
+}
+
+void PamWorker::respond(quint64 requestId, const QByteArray &response)
+{
+    if (!m_waitingForResponse || requestId != m_waitingRequestId) {
+        qCDebug(KSCREENLOCKER_GREET) << "[PAM worker] Ignoring stale or duplicate response" << requestId;
+        return;
+    }
+    m_waitingForResponse = false;
+    Q_EMIT promptResponseReceived(response);
+}
+
+void PamWorker::cancel(quint64 requestId)
+{
+    if (m_deferredRequestId == requestId) {
+        m_deferredRequestId = 0;
+    }
+    if (requestId != m_currentRequestId) {
+        return;
+    }
+    m_cancelled = true;
+    if (m_waitingForResponse) {
+        m_waitingForResponse = false;
+        Q_EMIT cancelled();
+    }
 }
 
 static void fail_delay(int retval, unsigned usec_delay, void *appdata_ptr)
@@ -240,8 +361,13 @@ void PamWorker::start(const QString &service, const QString &user)
         m_result = pam_start(qPrintable(service), qPrintable(user), &m_conv, &m_handle);
 
     // get errors quicker
-#if defined(HAVE_PAM_FAIL_DELAY)
-    pam_set_item(m_handle, PAM_FAIL_DELAY, reinterpret_cast< void* >(fail_delay));
+#if KSCREENLOCKER_HAVE_PAM_FAIL_DELAY
+    if (m_result == PAM_SUCCESS) {
+        const int delayResult = pam_set_item(m_handle, PAM_FAIL_DELAY, reinterpret_cast<void *>(fail_delay));
+        if (delayResult != PAM_SUCCESS) {
+            qCWarning(KSCREENLOCKER_GREET) << "[PAM worker] Could not install PAM failure-delay callback" << delayResult;
+        }
+    }
 #else
     Q_UNUSED(fail_delay);
 #endif
@@ -251,9 +377,12 @@ void PamWorker::start(const QString &service, const QString &user)
                   "[PAM worker %s] start: error starting, result code: %d (%s)",
                   qUtf8Printable(m_service),
                   m_result,
-                  pam_strerror(m_handle, m_result));
+                  m_handle ? pam_strerror(m_handle, m_result) : "unknown PAM error");
+        m_unavailable = true;
+        Q_EMIT unavailabilityChanged(true);
         return;
     } else {
+        m_initialized = true;
         qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] start: successfully started", qUtf8Printable(m_service));
     }
 }
@@ -275,12 +404,22 @@ PamAuthenticator::PamAuthenticator(const QString &service, const QString &user, 
     connect(&m_thread, &QThread::finished, d, &QObject::deleteLater);
 
     connect(d, &PamWorker::busyChanged, this, &PamAuthenticator::setBusy);
-    connect(d, &PamWorker::prompt, this, [this](const QString &msg) {
+    connect(d, &PamWorker::prompt, this, [this](quint64 requestId, const QString &msg) {
+        if (requestId != m_requestId) {
+            return;
+        }
         m_prompt = msg;
+        m_promptReady = true;
+        Q_EMIT promptReadyChanged();
         Q_EMIT prompt(msg);
     });
-    connect(d, &PamWorker::promptForSecret, this, [this](const QString &msg) {
+    connect(d, &PamWorker::promptForSecret, this, [this](quint64 requestId, const QString &msg) {
+        if (requestId != m_requestId) {
+            return;
+        }
         m_promptForSecret = msg;
+        m_promptReady = true;
+        Q_EMIT promptReadyChanged();
         Q_EMIT promptForSecret(msg);
     });
     connect(d, &PamWorker::infoMessage, this, [this](const QString &msg) {
@@ -301,14 +440,32 @@ PamAuthenticator::PamAuthenticator(const QString &service, const QString &user, 
         Q_EMIT availableChanged();
     });
 
-    connect(d, &PamWorker::succeeded, this, [this]() {
+    connect(d, &PamWorker::succeeded, this, [this](quint64 requestId) {
+        if (requestId != m_requestId) {
+            return;
+        }
+        clearPromptState();
         m_unlocked = true;
         Q_EMIT succeeded();
     });
     // Failed is not a persistent state. When a view provides authentication that will either result in failure or success,
     // failure simply means that the prompt is getting delayed.
-    connect(d, &PamWorker::failed, this, &PamAuthenticator::failed);
+    connect(d, &PamWorker::failed, this, [this](quint64 requestId) {
+        if (requestId != m_requestId) {
+            return;
+        }
+        clearPromptState();
+        Q_EMIT failed();
+    });
+    connect(d, &PamWorker::authenticationCancelled, this, [this](quint64 requestId) {
+        if (requestId != m_requestId) {
+            return;
+        }
+        clearPromptState();
+        Q_EMIT authenticationCancelled();
+    });
     connect(d, &PamWorker::loginFailedDelayStarted, this, &PamAuthenticator::loginFailedDelayStarted);
+    connect(d, &PamWorker::inPasswordDelayChanged, this, &PamAuthenticator::setInPasswordDelay);
 
     m_thread.start();
     init(service, user);
@@ -338,6 +495,26 @@ bool PamAuthenticator::isAvailable() const
     return m_inAuthentication && !m_unavailable;
 }
 
+bool PamAuthenticator::isUnavailable() const
+{
+    return m_unavailable;
+}
+
+bool PamAuthenticator::inPasswordDelay() const
+{
+    return m_inPasswordDelay;
+}
+
+bool PamAuthenticator::isPromptReady() const
+{
+    return m_promptReady;
+}
+
+quint64 PamAuthenticator::currentRequestId() const
+{
+    return m_requestId;
+}
+
 PamAuthenticator::NoninteractiveAuthenticatorTypes PamAuthenticator::authenticatorType() const
 {
     return m_authenticatorType;
@@ -359,26 +536,66 @@ bool PamAuthenticator::isUnlocked() const
 void PamAuthenticator::tryUnlock()
 {
     m_unlocked = false;
-    QMetaObject::invokeMethod(d, &PamWorker::authenticate);
+    clearPromptState();
+    ++m_requestId;
+    const quint64 requestId = m_requestId;
+    QMetaObject::invokeMethod(
+        d,
+        [worker = d, requestId] {
+            worker->authenticate(requestId);
+        },
+        Qt::QueuedConnection);
 }
 
 void PamAuthenticator::respond(const QByteArray &response)
 {
+    if (!m_promptReady) {
+        qCDebug(KSCREENLOCKER_GREET) << "Ignoring response without an active PAM prompt";
+        return;
+    }
+    m_promptReady = false;
+    Q_EMIT promptReadyChanged();
+    const quint64 requestId = m_requestId;
     QMetaObject::invokeMethod(
         d,
-        [this, response]() {
-            Q_EMIT d->promptResponseReceived(response);
+        [worker = d, requestId, response]() {
+            worker->respond(requestId, response);
         },
         Qt::QueuedConnection);
 }
 
 void PamAuthenticator::cancel()
 {
+    const quint64 requestId = m_requestId;
+    clearPromptState();
+    QMetaObject::invokeMethod(
+        d,
+        [worker = d, requestId] {
+            worker->cancel(requestId);
+        },
+        Qt::QueuedConnection);
+}
+
+void PamAuthenticator::setInPasswordDelay(bool inPasswordDelay)
+{
+    if (m_inPasswordDelay == inPasswordDelay) {
+        return;
+    }
+    m_inPasswordDelay = inPasswordDelay;
+    Q_EMIT inPasswordDelayChanged();
+}
+
+void PamAuthenticator::clearPromptState()
+{
+    const bool wasReady = m_promptReady;
+    m_promptReady = false;
     m_prompt.clear();
     m_promptForSecret.clear();
     m_infoMessage.clear();
     m_errorMessage.clear();
-    QMetaObject::invokeMethod(d, &PamWorker::cancelled);
+    if (wasReady) {
+        Q_EMIT promptReadyChanged();
+    }
 }
 
 QString PamAuthenticator::getPrompt() const

@@ -4,6 +4,7 @@ SPDX-FileCopyrightText: 2022 David Edmundson <davidedmundson@kde.org>
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -29,8 +30,13 @@ PamTest::PamTest()
 
     qputenv("PAM_WRAPPER", "1");
     qputenv("PAM_WRAPPER_DEBUGLEVEL", "2"); // DEBUG level
-    qputenv("PAM_WRAPPER_SERVICE_DIR", QFINDTESTDATA("data").toUtf8());
-    qputenv("PAM_MATRIX_PASSWD", QFINDTESTDATA("data/test_db").toUtf8());
+    const QString serviceDir = QStringLiteral(PAM_TEST_SERVICE_DIR);
+    const QString matrixFile = QStringLiteral(PAM_TEST_DB);
+    if (!QFileInfo::exists(serviceDir + QStringLiteral("/test_service")) || !QFileInfo::exists(matrixFile)) {
+        qFatal("The isolated PAM test fixtures are missing");
+    }
+    qputenv("PAM_WRAPPER_SERVICE_DIR", serviceDir.toUtf8());
+    qputenv("PAM_MATRIX_PASSWD", matrixFile.toUtf8());
 }
 
 void PamTest::testLogin()
