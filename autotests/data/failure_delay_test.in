@@ -1,0 +1,2 @@
+auth required @PamFailureDelayTestModule@
+account required @PamFailureDelayTestModule@

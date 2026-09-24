@@ -32,6 +32,9 @@ class PamAuthenticators : public QObject
     Q_PROPERTY(AuthenticatorsState state READ state NOTIFY stateChanged)
 
     Q_PROPERTY(bool hadPrompt READ hadPrompt NOTIFY hadPromptChanged)
+    Q_PROPERTY(bool inPasswordDelay READ inPasswordDelay NOTIFY inPasswordDelayChanged)
+    Q_PROPERTY(bool hasPendingResponse READ hasPendingResponse NOTIFY hasPendingResponseChanged)
+    Q_PROPERTY(bool suspended READ isSuspended NOTIFY suspendedChanged)
 
 public:
     PamAuthenticators(std::unique_ptr<PamAuthenticator> &&interactive,
@@ -49,6 +52,7 @@ public:
     Q_SIGNAL void stateChanged();
     Q_INVOKABLE void startAuthenticating();
     Q_INVOKABLE void stopAuthenticating();
+    Q_INVOKABLE void setSuspended(bool suspended);
 
     // these properties delegate to the interactive authenticator
     bool isBusy() const;
@@ -65,6 +69,8 @@ public:
 
     // these delegate to interactive authenticator
     Q_INVOKABLE void respond(const QByteArray &response);
+    Q_INVOKABLE bool submitResponse(const QString &response, QObject *owner);
+    Q_INVOKABLE void discardPendingResponse();
     Q_INVOKABLE void cancel();
 
     // this property is true if any of the authenticators' unlocked properties are true
@@ -81,6 +87,15 @@ public:
 
     void setGraceLocked(bool b);
 
+    bool inPasswordDelay() const;
+    Q_SIGNAL void inPasswordDelayChanged();
+
+    bool hasPendingResponse() const;
+    Q_SIGNAL void hasPendingResponseChanged();
+
+    bool isSuspended() const;
+    Q_SIGNAL void suspendedChanged();
+
     bool hadPrompt() const;
     Q_SIGNAL void hadPromptChanged();
 
@@ -91,4 +106,6 @@ private:
     // convenience internal function for setting state,
     // should not be exposed to outsiders
     void setState(AuthenticatorsState state);
+    void clearPendingResponse(const char *reason);
+    void flushPendingResponse();
 };

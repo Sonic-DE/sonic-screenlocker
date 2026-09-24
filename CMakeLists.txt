@@ -103,6 +103,28 @@ add_feature_info("Unlock broken screenlocker"
                  "Needed for emergency unlock in case that the greeter is broken. In case your distribution does not provide loginctl or consolekit please contact plasma-devel@kde.org to discuss alternatives.")
 
 find_package(PAM REQUIRED)
+option(ENABLE_PAM_FAIL_DELAY_CALLBACK "Use PAM_FAIL_DELAY callbacks when supported" ON)
+set(KSCREENLOCKER_HAVE_PAM_FAIL_DELAY 0)
+if(ENABLE_PAM_FAIL_DELAY_CALLBACK)
+    include(CheckCXXSourceCompiles)
+    set(_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
+    set(_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_INCLUDES "${PAM_INCLUDE_DIR}")
+    set(CMAKE_REQUIRED_LIBRARIES "${PAM_LIBRARIES}")
+    check_cxx_source_compiles([[#include <security/pam_appl.h>
+int main()
+{
+    pam_handle_t *handle = nullptr;
+    return pam_set_item(handle, PAM_FAIL_DELAY, nullptr);
+}
+]] PAM_FAIL_DELAY_CALLBACK_SUPPORTED)
+    set(CMAKE_REQUIRED_INCLUDES "${_saved_required_includes}")
+    set(CMAKE_REQUIRED_LIBRARIES "${_saved_required_libraries}")
+    if(PAM_FAIL_DELAY_CALLBACK_SUPPORTED)
+        set(KSCREENLOCKER_HAVE_PAM_FAIL_DELAY 1)
+    endif()
+endif()
+message(STATUS "PAM fail-delay callback support: ${KSCREENLOCKER_HAVE_PAM_FAIL_DELAY}")
 set_package_properties(PAM PROPERTIES DESCRIPTION "PAM Libraries"
                        URL "https://www.kernel.org/pub/linux/libs/pam/"
                        TYPE REQUIRED
@@ -300,4 +322,3 @@ endif()
 ki18n_install(po)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
-

@@ -17,6 +17,7 @@ class PamAuthenticator : public QObject
 
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool available READ isAvailable NOTIFY availableChanged)
+    Q_PROPERTY(bool inPasswordDelay READ inPasswordDelay NOTIFY inPasswordDelayChanged)
     Q_PROPERTY(NoninteractiveAuthenticatorTypes authenticatorType READ authenticatorType CONSTANT)
 
     Q_PROPERTY(QString prompt READ getPrompt NOTIFY prompt)
@@ -46,6 +47,10 @@ public:
     bool isBusy() const;
     bool isUnlocked() const;
     bool isAvailable() const;
+    bool isUnavailable() const;
+    bool inPasswordDelay() const;
+    bool isPromptReady() const;
+    quint64 currentRequestId() const;
     NoninteractiveAuthenticatorTypes authenticatorType() const;
 
     // Get prefix to de-duplicate from their signals.
@@ -64,8 +69,11 @@ Q_SIGNALS:
     void errorMessage(const QString &msg);
     void succeeded();
     void failed();
+    void authenticationCancelled();
     void availableChanged();
     void loginFailedDelayStarted(const uint uSecDelay);
+    void inPasswordDelayChanged();
+    void promptReadyChanged();
 
 public Q_SLOTS:
     void tryUnlock();
@@ -77,6 +85,8 @@ protected:
 
 private:
     void setBusy(bool busy);
+    void setInPasswordDelay(bool inPasswordDelay);
+    void clearPromptState();
 
     const std::vector<std::pair<QMetaMethod, const QString &>> m_signalsToMembers;
     // NOTE Don't forget to reset in cancel as necessary
@@ -89,6 +99,9 @@ private:
     bool m_unlocked = false;
     bool m_inAuthentication = false;
     bool m_unavailable = false;
+    bool m_inPasswordDelay = false;
+    bool m_promptReady = false;
+    quint64 m_requestId = 0;
     NoninteractiveAuthenticatorTypes m_authenticatorType;
     QThread m_thread;
     PamWorker *d;
