@@ -28,6 +28,8 @@ struct PamAuthenticators::Private {
     bool configured = true;
     bool graceLocked = false;
     bool hadPrompt = false;
+    // Cache successful authentication independently of the authenticator lifetime.
+    bool locked = true;
     bool suspended = false;
     bool responseInFlight = false;
     QByteArray pendingResponse;
@@ -165,6 +167,7 @@ void PamAuthenticators::connectAuthenticators()
         return;
     }
     connect(interactive, &PamAuthenticator::succeeded, this, [this] {
+        d->locked = false;
         clearPendingResponse("authentication succeeded");
         d->cancelNoninteractive();
         saveAuthenticatorType(m_authenticator);
@@ -227,6 +230,7 @@ void PamAuthenticators::connectAuthenticators()
     for (const auto &authenticator : d->noninteractive) {
         auto secondary = authenticator.get();
         connect(secondary, &PamAuthenticator::succeeded, this, [this] {
+            d->locked = false;
             clearPendingResponse("non-interactive authentication succeeded");
             d->interactive->cancel();
             saveAuthenticatorType(m_authenticator);
@@ -257,9 +261,7 @@ void PamAuthenticators::connectAuthenticators()
 
 bool PamAuthenticators::isUnlocked() const
 {
-    return (d->interactive && d->interactive->isUnlocked()) || std::ranges::any_of(d->noninteractive, [](const auto &authenticator) {
-               return authenticator->isUnlocked();
-           });
+    return !d->locked;
 }
 
 PamAuthenticators::AuthenticatorsState PamAuthenticators::state() const
