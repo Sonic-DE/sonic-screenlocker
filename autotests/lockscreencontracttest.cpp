@@ -45,11 +45,17 @@ void LockScreenContractTest::productionThemeUsesBackendContract()
 
     QVERIFY(!ui.contains("pamTimeout"));
     QVERIFY(!ui.contains("pendingPassword"));
+    QVERIFY(!ui.contains("authenticator.respond("));
+    QVERIFY(!ui.contains("mainBlock.enabled ="));
     QVERIFY(ui.contains("authenticator.submitResponse(password, lockScreenUi)"));
     QVERIFY(ui.contains("authenticator.setSuspended(true)"));
     QVERIFY(ui.contains("authenticator.setSuspended(false)"));
+    QVERIFY(ui.contains("function onResumingFromSuspend()"));
+    QVERIFY(ui.contains("submissionBlocked: authenticator.hasPendingResponse || authenticator.suspended || authenticator.unlocked"));
     QVERIFY(block.contains("property bool submissionBlocked"));
     QVERIFY(block.contains("if (submissionBlocked)"));
+    QVERIFY(block.contains("enabled: !sessionManager.submissionBlocked"));
+    QVERIFY(block.contains("if (sessionManager.lockScreenUiVisible && !sessionManager.submissionBlocked)"));
 }
 
 QTEST_GUILESS_MAIN(LockScreenContractTest)
