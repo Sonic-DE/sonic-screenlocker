@@ -13,8 +13,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 // This test runs under the expectation that
 // we are run with LD_PRELOAD=libpam_wrapper.so pamTest
 
-class PamTest : public QObject
-{
+class PamTest : public QObject {
     Q_OBJECT
 public:
     PamTest();
@@ -42,11 +41,15 @@ PamTest::PamTest()
 void PamTest::testLogin()
 {
     PamAuthenticator auth(QStringLiteral("test_service"), QStringLiteral("test_user"));
+    QSignalSpy readySpy(&auth, &PamAuthenticator::readyChanged);
     QSignalSpy promptSpy(&auth, &PamAuthenticator::prompt);
     QSignalSpy promptForSecretSpy(&auth, &PamAuthenticator::promptForSecret);
     QSignalSpy succeededSpy(&auth, &PamAuthenticator::succeeded);
     QSignalSpy failedSpy(&auth, &PamAuthenticator::failed);
     QSignalSpy busyChangedSpy(&auth, &PamAuthenticator::busyChanged);
+
+    QVERIFY(auth.isReady() || readySpy.wait());
+    QVERIFY(auth.isReady());
 
     // invalid password
     auth.tryUnlock();
@@ -57,7 +60,7 @@ void PamTest::testLogin()
 
     QVERIFY(promptSpy.count() == 0);
     QVERIFY(succeededSpy.count() == 0);
-    QVERIFY(busyChangedSpy.count() == 2); // changed to busy and back again.
+    QCOMPARE(busyChangedSpy.count(), 4); // busy, awaiting prompt, processing response, idle.
 
     // try again, with the right password
     auth.tryUnlock();
@@ -65,7 +68,7 @@ void PamTest::testLogin()
     auth.respond("my_password");
     QVERIFY(succeededSpy.wait());
 
-    QVERIFY(busyChangedSpy.count() == 4);
+    QCOMPARE(busyChangedSpy.count(), 8);
 }
 
 QTEST_MAIN(PamTest)

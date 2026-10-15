@@ -1,0 +1,30 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!--
+  SPDX-License-Identifier: CC0-1.0
+  SPDX-FileCopyrightText: none
+-->
+<node>
+  <!--
+    org.kde.plasma.screenlocker.worker:
+    The interface of the worker subprocess. The greeter calls this interface to tell the worker to do work.
+  -->
+  <interface name="org.kde.plasma.screenlocker.worker">
+    <!--
+      Authenticate:
+      @result: 0 on success, 1 on failure, 2 on service stack being unavailable
+
+      The actual auth flow starts here. This method is blocking until auth is complete.
+      Make sure to set a suitably long bus timeout!
+    -->
+    <method name="Authenticate">
+      <arg type="i" name="result" direction="out"/>
+    </method>
+
+    <!--
+      Cancel:
+      This cancels an ongoing authentication. It is non-blocking.
+    -->
+    <method name="Cancel"/>
+  </interface>
+</node>

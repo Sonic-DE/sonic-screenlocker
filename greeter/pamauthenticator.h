@@ -1,20 +1,29 @@
 /*
     SPDX-FileCopyrightText: 2020 David Edmundson <davidedmundson@kde.org>
+    SPDX-FileCopyrightText: 2026 Harald Sitter <sitter@kde.org>
 
     SPDX-License-Identifier: LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
 */
 
 #pragma once
 
+#include <QDBusConnection>
+#include <QDBusContext>
+#include <QDBusMessage>
 #include <QObject>
-#include <QThread>
+#include <chrono>
+#include <memory>
+#include <vector>
 
-class PamWorker;
+class QDBusServer;
+class QProcess;
+class QTimer;
+class OrgKdePlasmaScreenlockerWorkerInterface;
 
-class PamAuthenticator : public QObject
-{
+class PamAuthenticator : public QObject, protected QDBusContext {
     Q_OBJECT
 
+    Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool available READ isAvailable NOTIFY availableChanged)
     Q_PROPERTY(bool inPasswordDelay READ inPasswordDelay NOTIFY inPasswordDelayChanged)
@@ -29,10 +38,16 @@ class PamAuthenticator : public QObject
     Q_PROPERTY(bool unlocked READ isUnlocked NOTIFY succeeded)
 
 public:
+    /*!
+        Exists purely to not have to change the UI code as of Plasma 6.8. Could eventually be dropped in favor of the
+        PamAuthenticators::Authenticator enum.
+     */
     enum NoninteractiveAuthenticatorType {
         None = 0,
         Fingerprint = 1 << 0,
         Smartcard = 2 << 0,
+        Face = 3 << 0,
+        Universal2Factor = 4 << 0,
     };
     Q_DECLARE_FLAGS(NoninteractiveAuthenticatorTypes, NoninteractiveAuthenticatorType)
     Q_FLAG(NoninteractiveAuthenticatorTypes)
@@ -44,7 +59,16 @@ public:
     ~PamAuthenticator() override;
     Q_DISABLE_COPY_MOVE(PamAuthenticator)
 
+    /*!
+        Whether the Authenticator is currently doing something. This mostly means it is currently authenticating.
+        A busy Authenticator probably won't be able to act on further tryUnlock calls.
+     */
     bool isBusy() const;
+    bool isReady() const;
+
+    /*!
+        Whether the Authenticator has successfully completed tryUnlock. i.e. the PAM service actually unlocked the account
+     */
     bool isUnlocked() const;
     bool isAvailable() const;
     bool isUnavailable() const;
@@ -62,6 +86,7 @@ public:
     QString service() const;
 
 Q_SIGNALS:
+    void readyChanged();
     void busyChanged();
     void promptForSecret(const QString &msg);
     void prompt(const QString &msg);
@@ -79,32 +104,56 @@ public Q_SLOTS:
     void tryUnlock();
     void respond(const QByteArray &response);
     void cancel();
-
-protected:
-    void init(const QString &service, const QString &user);
+    void Ping(const QString &message);
+    [[nodiscard]] QString Prompt(const QString &msg);
+    [[nodiscard]] QString MaskedPrompt(const QString &msg);
+    void StartFailedDelay(uint useconds);
+    void InfoMessage(const QString &msg);
+    void ErrorMessage(const QString &msg);
 
 private:
     void setBusy(bool busy);
+    void setReady(bool ready);
     void setInPasswordDelay(bool inPasswordDelay);
     void clearPromptState();
+    [[nodiscard]] QString promptInternal(const QString &msg, bool isSecret);
+    void quitWorkerProcess();
+    void startWorker();
+    void connectWorker(const QDBusConnection &connection);
+    void startDeferredAuthentication();
+    void scheduleDelayTimer();
+    void setUnavailable();
+    void handleFailedAuthentication();
 
-    const std::vector<std::pair<QMetaMethod, const QString &>> m_signalsToMembers;
     // NOTE Don't forget to reset in cancel as necessary
     QString m_prompt;
     QString m_promptForSecret;
     QString m_errorMessage;
     QString m_infoMessage;
     QString m_service;
+    bool m_ready = false;
     bool m_busy = false;
+    bool m_authenticationRequested = false;
+    bool m_cancelling = false;
     bool m_unlocked = false;
-    bool m_inAuthentication = false;
     bool m_unavailable = false;
     bool m_inPasswordDelay = false;
     bool m_promptReady = false;
     quint64 m_requestId = 0;
+    bool m_hadPromptForRequest = false;
+    uint m_failedCount = 0;
+    std::chrono::steady_clock::time_point m_lastFailed;
+    std::chrono::steady_clock::time_point m_nextAttemptAllowedTime;
+    bool m_initialized = false;
+    bool m_inAuthenticate = false;
+    quint64 m_generation = 0;
+    QTimer *m_delayTimer = nullptr;
     NoninteractiveAuthenticatorTypes m_authenticatorType;
-    QThread m_thread;
-    PamWorker *d;
+    QDBusMessage m_pendingPrompt;
+    QDBusServer *m_server = nullptr;
+    std::unique_ptr<OrgKdePlasmaScreenlockerWorkerInterface> m_dbusWorker;
+    QProcess *m_workerProcess = nullptr;
+    QString m_user;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(PamAuthenticator::NoninteractiveAuthenticatorTypes)

@@ -19,14 +19,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <config-kscreenlocker.h>
 #include <kscreenlocker_greet_logging.h>
-
-#if HAVE_SYS_PRCTL_H
-#include <sys/prctl.h>
-#endif
-#if HAVE_SYS_PROCCTL_H
-#include <sys/procctl.h>
-#include <unistd.h>
-#endif
+#include <prctls.h>
 
 #include <KSignalHandler>
 
@@ -69,14 +62,10 @@ int main(int argc, char *argv[])
     sigaddset(&blockedSignals, SIGUSR1);
     pthread_sigmask(SIG_BLOCK, &blockedSignals, NULL);
 
-    // disable ptrace on the greeter
-#if HAVE_PR_SET_DUMPABLE
-    prctl(PR_SET_DUMPABLE, 0);
-#endif
-#if HAVE_PROC_TRACE_CTL
-    int mode = PROC_TRACE_CTL_DISABLE;
-    procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
-#endif
+    // disable ptrace on the greeter unless debugging is enabled
+    if (auto dumpable = KSCREENLOCKER_GREET().isDebugEnabled(); !PRCTLs::setDumpable(dumpable)) {
+        qCWarning(KSCREENLOCKER_GREET) << "Failed to switch ptrace on the greeter to" << (dumpable ? "enabled" : "disabled");
+    }
 
     qInstallMessageHandler(GreeterMessageHandler);
 
@@ -84,12 +73,10 @@ int main(int argc, char *argv[])
 
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kscreenlocker_greet"));
 
-    // explicitly disable input methods on x11 as it makes it impossible to
-    // unlock, see BUG 306932 but explicitly set on screen keyboard such as maliit
-    // is allowed
-    if (qgetenv("QT_IM_MODULE") != QByteArrayLiteral("maliit")) {
-        qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
-    }
+    // The shared workspace footer hosts Qt's in-process keyboard on every init
+    // system. The input context must be selected before constructing UnlockApp.
+    qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
+    qunsetenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE");
 
     // Suppresses modal warnings about unwritable configuration files which may
     // render the system inaccessible
@@ -162,13 +149,9 @@ int main(int argc, char *argv[])
         }
 
         // allow ptrace if testing is enabled
-#if HAVE_PR_SET_DUMPABLE
-        prctl(PR_SET_DUMPABLE, 1);
-#endif
-#if HAVE_PROC_TRACE_CTL
-        int mode = PROC_TRACE_CTL_ENABLE;
-        procctl(P_PID, getpid(), PROC_TRACE_CTL, &mode);
-#endif
+        if (!PRCTLs::setDumpable(true)) {
+            qCWarning(KSCREENLOCKER_GREET) << "Failed to enable ptrace on the testing greeter";
+        }
     } else {
         app.setImmediateLock(parser.isSet(immediateLockOption));
     }

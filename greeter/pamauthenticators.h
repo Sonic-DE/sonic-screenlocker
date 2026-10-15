@@ -1,5 +1,6 @@
 /*
     SPDX-FileCopyrightText: 2023 Janet Blackquill <uhhadd@gmail.com>
+    SPDX-FileCopyrightText: 2026 Harald Sitter <sitter@kde.org>
 
     SPDX-License-Identifier: LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
 */
@@ -7,11 +8,11 @@
 #pragma once
 
 #include "pamauthenticator.h"
+
 #include <QObject>
 #include <memory>
 
-class PamAuthenticators : public QObject
-{
+class PamAuthenticators : public QObject {
     Q_OBJECT
 
     // these properties delegate to the interactive authenticator
@@ -26,7 +27,13 @@ class PamAuthenticators : public QObject
     // this property true if any of the authenticators' unlocked properties are true
     Q_PROPERTY(bool unlocked READ isUnlocked NOTIFY succeeded)
 
-    // this property is a sum of the noninteractive authenticators' flags
+    /*!
+        \qmlproperty Authenticator.NoninteractiveAuthenticatorTypes Authenticators::authenticatorTypes
+
+        This exists for compatibility with Sonic's existing lockscreen QML.
+        It reports the available secondary fingerprint and smartcard authenticators.
+        Prefer the newer Authenticators::authenticator property instead.
+    */
     Q_PROPERTY(PamAuthenticator::NoninteractiveAuthenticatorTypes authenticatorTypes READ authenticatorTypes NOTIFY authenticatorTypesChanged)
 
     Q_PROPERTY(AuthenticatorsState state READ state NOTIFY stateChanged)
@@ -35,8 +42,19 @@ class PamAuthenticators : public QObject
     Q_PROPERTY(bool inPasswordDelay READ inPasswordDelay NOTIFY inPasswordDelayChanged)
     Q_PROPERTY(bool hasPendingResponse READ hasPendingResponse NOTIFY hasPendingResponseChanged)
     Q_PROPERTY(bool suspended READ isSuspended NOTIFY suspendedChanged)
+    Q_PROPERTY(Authenticator authenticator MEMBER m_authenticator NOTIFY authenticatorChanged)
 
 public:
+    enum class Authenticator {
+        Regular,
+        Fingerprint,
+        Smartcard,
+        Face,
+        Universal2Factor,
+    };
+    Q_ENUM(Authenticator)
+
+    PamAuthenticators(const QString &loginName, QObject *parent = nullptr);
     PamAuthenticators(std::unique_ptr<PamAuthenticator> &&interactive,
                       std::vector<std::unique_ptr<PamAuthenticator>> &&noninteractive,
                       QObject *parent = nullptr);
@@ -98,8 +116,16 @@ public:
 
     bool hadPrompt() const;
     Q_SIGNAL void hadPromptChanged();
+    Q_SIGNAL void authenticatorChanged();
 
 private:
+    void connectAuthenticators();
+    void onAuthenticatorChanged();
+    Authenticator loadAuthenticatorType();
+    void saveAuthenticatorType(Authenticator authenticator);
+
+    QString m_loginName;
+    Authenticator m_authenticator = loadAuthenticatorType();
     struct Private;
     QScopedPointer<Private> d;
 

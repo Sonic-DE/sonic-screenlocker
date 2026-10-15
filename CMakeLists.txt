@@ -6,8 +6,8 @@ set(PROJECT_VERSION "6.7.5")
 set(PROJECT_VERSION_MAJOR 6)
 
 set(PROJECT_DEP_VERSION "6.7.0")
-set(QT_MIN_VERSION "6.10.0")
-set(KF6_MIN_VERSION "6.26.0")
+set(QT_MIN_VERSION "6.11.0")
+set(KF6_MIN_VERSION "6.30.0")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,21 +29,9 @@ include(GenerateExportHeader)
 include(KDEClangFormat)
 include(KDEGitCommitHooks)
 include(ECMDeprecationSettings)
+include(ECMQmlModule)
 
-include(CheckIncludeFile)
-include(CheckSymbolExists)
-check_include_file("sys/prctl.h" HAVE_SYS_PRCTL_H)
-check_symbol_exists(PR_SET_DUMPABLE "sys/prctl.h" HAVE_PR_SET_DUMPABLE)
-check_include_file("sys/procctl.h" HAVE_SYS_PROCCTL_H)
-check_symbol_exists(PROC_TRACE_CTL "sys/procctl.h" HAVE_PROC_TRACE_CTL)
-if (HAVE_PR_SET_DUMPABLE OR HAVE_PROC_TRACE_CTL)
-  set(CAN_DISABLE_PTRACE TRUE)
-endif ()
-add_feature_info("prctl/procctl tracing control"
-                 CAN_DISABLE_PTRACE
-                 "Required for disallowing ptrace on greeter and kcheckpass process")
-
-find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Widgets Quick Test)
+find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Network Widgets Quick Test)
 
 if (Qt6Gui_VERSION VERSION_GREATER_EQUAL "6.10.0")
     find_package(Qt6GuiPrivate ${REQUIRED_QT_VERSION} REQUIRED NO_MODULE)

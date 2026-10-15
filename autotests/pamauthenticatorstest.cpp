@@ -5,6 +5,12 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <array>
+#include <cstddef>
+#include <memory>
+#include <new>
+
+#include "../greeter/pamauthenticatordescriptor.h"
 #include "../greeter/pamauthenticators.h"
 
 class PamAuthenticatorsTest : public QObject {
@@ -18,9 +24,62 @@ private:
     }
 
 private Q_SLOTS:
+    void descriptorDefaultsAreInitialized();
+    void missingAuthenticatorIsSafe();
+    void earlySubmissionWaitsForWorkerReady();
     void queuedResponseWaitsForDelayAndPrompt();
     void ownerDestructionAndSuspendDiscardResponse();
 };
+
+void PamAuthenticatorsTest::descriptorDefaultsAreInitialized()
+{
+    // Default-initialize in prefilled storage so zeroed memory cannot hide missing initializers.
+    alignas(PAMAuthenticatorDescriptor) std::array<std::byte, sizeof(PAMAuthenticatorDescriptor)> storage;
+    storage.fill(std::byte{0xA5});
+    const auto destroy = [](PAMAuthenticatorDescriptor *descriptor) {
+        std::destroy_at(descriptor);
+    };
+    std::unique_ptr<PAMAuthenticatorDescriptor, decltype(destroy)> descriptor(::new (storage.data()) PAMAuthenticatorDescriptor, destroy);
+    QVERIFY(!descriptor->isEnabled());
+    QCOMPARE(descriptor->type(), PamAuthenticators::Authenticator::Regular);
+    QVERIFY(descriptor->isFunctional());
+    for (const auto property : {"passwordField", "expectingPrompt", "showPrompt"}) {
+        const auto value = descriptor->property(property);
+        QVERIFY(value.isValid());
+        QCOMPARE(value.toBool(), false);
+    }
+    QVERIFY(descriptor->property("iconName").toString().isEmpty());
+    QVERIFY(descriptor->property("tooltip").toString().isEmpty());
+}
+
+void PamAuthenticatorsTest::missingAuthenticatorIsSafe()
+{
+    PamAuthenticators authenticators(std::unique_ptr<PamAuthenticator>{}, std::vector<std::unique_ptr<PamAuthenticator>>{});
+    QObject owner;
+    QSignalSpy succeededSpy(&authenticators, &PamAuthenticators::succeeded);
+    QVERIFY(!authenticators.isBusy());
+    QVERIFY(!authenticators.inPasswordDelay());
+    QVERIFY(authenticators.prompt().isEmpty());
+    QVERIFY(authenticators.promptForSecret().isEmpty());
+    QVERIFY(authenticators.infoMessage().isEmpty());
+    QVERIFY(authenticators.errorMessage().isEmpty());
+    QVERIFY(!authenticators.isUnlocked());
+    QVERIFY(!authenticators.hasPendingResponse());
+    QCOMPARE(authenticators.authenticatorTypes(), PamAuthenticator::NoninteractiveAuthenticatorTypes(PamAuthenticator::None));
+    authenticators.startAuthenticating();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
+    QVERIFY(!authenticators.submitResponse(QStringLiteral("my_password"), &owner));
+    authenticators.respond(QByteArrayLiteral("my_password"));
+    authenticators.discardPendingResponse();
+    authenticators.stopAuthenticating();
+    authenticators.setSuspended(true);
+    authenticators.setSuspended(false);
+    authenticators.setGraceLocked(true);
+    authenticators.setGraceLocked(false);
+    authenticators.cancel();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
+    QCOMPARE(succeededSpy.count(), 0);
+}
 
 void PamAuthenticatorsTest::queuedResponseWaitsForDelayAndPrompt()
 {
@@ -54,6 +113,23 @@ void PamAuthenticatorsTest::queuedResponseWaitsForDelayAndPrompt()
     QVERIFY(!authenticators->hasPendingResponse());
     QVERIFY(authenticators->isUnlocked());
     QVERIFY(pendingSpy.count() >= 4);
+}
+
+void PamAuthenticatorsTest::earlySubmissionWaitsForWorkerReady()
+{
+    auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral("failure_delay_test"), QStringLiteral("test_user"));
+    QVERIFY(!interactive->isReady());
+    PamAuthenticators authenticators(std::move(interactive), std::vector<std::unique_ptr<PamAuthenticator>>{});
+    QObject owner;
+    QSignalSpy succeededSpy(&authenticators, &PamAuthenticators::succeeded);
+    authenticators.startAuthenticating();
+    QCOMPARE(authenticators.state(), PamAuthenticators::Authenticating);
+    QVERIFY(authenticators.submitResponse(QStringLiteral("my_password"), &owner));
+    QVERIFY(authenticators.hasPendingResponse());
+    QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.count(), 1, 2000);
+    QVERIFY(authenticators.isUnlocked());
+    QVERIFY(!authenticators.hasPendingResponse());
+    QCOMPARE(authenticators.state(), PamAuthenticators::Idle);
 }
 
 void PamAuthenticatorsTest::ownerDestructionAndSuspendDiscardResponse()
