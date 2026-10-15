@@ -80,7 +80,8 @@ inline void ensureLogFileExists(const QString &s_logFilePath)
 static void messageHandler(QtMsgType type, const QString &category, const QString &msg)
 {
     static bool loggingCapabilityChecked = false;
-    static const QString s_logFilePath = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + QStringLiteral("/sonic/screenlocker.log");
+    // Plugin finalizers can still log after function-static objects are gone.
+    const QString s_logFilePath = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + QStringLiteral("/sonic/screenlocker.log");
 
     if (!loggingCapabilityChecked) {
         loggingCapabilityChecked = true;
@@ -115,7 +116,7 @@ static void messageHandler(QtMsgType type, const QString &category, const QStrin
     // If stdout/stderr are unhandled, try to use manual file
     rotateLogFile(s_logFilePath);
     ensureLogFileExists(s_logFilePath);
-    static QFile logFile(s_logFilePath);
+    QFile logFile(s_logFilePath);
     if (logFile.open(QIODevice::Append | QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&logFile);
 

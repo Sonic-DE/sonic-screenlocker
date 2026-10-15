@@ -73,12 +73,10 @@ int main(int argc, char *argv[])
 
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kscreenlocker_greet"));
 
-    // explicitly disable input methods on x11 as it makes it impossible to
-    // unlock, see BUG 306932 but explicitly set on screen keyboard such as maliit
-    // is allowed
-    if (qgetenv("QT_IM_MODULE") != QByteArrayLiteral("maliit")) {
-        qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
-    }
+    // The shared workspace footer hosts Qt's in-process keyboard on every init
+    // system. The input context must be selected before constructing UnlockApp.
+    qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
+    qunsetenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE");
 
     // Suppresses modal warnings about unwritable configuration files which may
     // render the system inaccessible
