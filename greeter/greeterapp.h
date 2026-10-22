@@ -26,6 +26,7 @@ namespace ScreenLocker
 {
 class WallpaperIntegration;
 class ShellIntegration;
+class VirtualKeyboard;
 
 class UnlockApp : public QGuiApplication
 {
@@ -98,5 +99,6 @@ private:
 
     // Custom IPC client for communicating with KSldApp
     GreeterIpcClient *m_ipcClient = nullptr;
+    VirtualKeyboard *m_virtualKeyboard = nullptr;
 };
 } // namespace

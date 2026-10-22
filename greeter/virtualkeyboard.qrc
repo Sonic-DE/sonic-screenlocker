@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/kscreenlocker">
+        <file>virtualkeyboard.qml</file>
+    </qresource>
+</RCC>

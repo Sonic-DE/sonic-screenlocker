@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "noaccessnetworkaccessmanagerfactory.h"
 #include "powermanagement.h"
 #include "shell_integration.h"
+#include "virtualkeyboard.h"
 #include "wallpaper_integration.h"
 
 #include <config-kscreenlocker.h>
@@ -167,6 +168,7 @@ UnlockApp::UnlockApp(int &argc, char **argv)
         for (auto *view : std::as_const(m_views)) {
             if (view->screen() == screen) {
                 m_views.removeOne(view);
+                m_virtualKeyboard->removeView(view);
                 delete view;
                 break;
             }
@@ -176,6 +178,7 @@ UnlockApp::UnlockApp(int &argc, char **argv)
 
 UnlockApp::~UnlockApp()
 {
+    delete m_virtualKeyboard;
     // workaround QTBUG-55460
     // will be fixed when themes port to QQC2
     for (auto view : std::as_const(m_views)) {
@@ -209,6 +212,7 @@ void UnlockApp::initialize()
     m_userImage = user.faceIconPath();
 
     installEventFilter(this);
+    m_virtualKeyboard = new VirtualKeyboard(this);
 
     QDBusConnection::sessionBus().connect(s_plasmaShellService,
                                           s_osdServicePath,
@@ -458,6 +462,7 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
         }
     }
     view->setResizeMode(PlasmaQuick::QuickViewSharedEngine::SizeRootObjectToView);
+    m_virtualKeyboard->addView(view, view->engine().get());
 
     // we need to set this wallpaper properties separately after the lockscreen
     // QML is loaded this is because we need to anchor to the view that gets
