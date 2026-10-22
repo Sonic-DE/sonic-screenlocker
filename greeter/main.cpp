@@ -76,7 +76,9 @@ int main(int argc, char *argv[])
     // The shared workspace footer hosts Qt's in-process keyboard on every init
     // system. The input context must be selected before constructing UnlockApp.
     qputenv("QT_IM_MODULE", QByteArrayLiteral("sonicvirtualkeyboard"));
-    qunsetenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE");
+    // The locker only displays/routes input to registered greeter surfaces.
+    // Use Qt's application integration instead of an unregistered OSK window.
+    qputenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE", "1");
 
     // Suppresses modal warnings about unwritable configuration files which may
     // render the system inaccessible

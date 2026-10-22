@@ -28,6 +28,8 @@ ecm_qt_declare_logging_category(kscreenlocker_authenticator_SRCS
 
 set(kscreenlocker_greet_SRCS
    greeterapp.cpp
+   virtualkeyboard.cpp
+   virtualkeyboard.h
    main.cpp
    noaccessnetworkaccessmanagerfactory.cpp
    greeteripcclient.cpp
@@ -65,6 +67,7 @@ target_link_libraries(kscreenlocker_authenticator
 )
 
 qt_add_resources(kscreenlocker_greet_SRCS fallbacktheme.qrc)
+qt_add_resources(kscreenlocker_greet_SRCS virtualkeyboard.qrc)
 
 add_executable(kscreenlocker_greet ${kscreenlocker_greet_SRCS})
 

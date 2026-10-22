@@ -164,3 +164,35 @@ target_link_libraries(x11LockerTest Qt::GuiPrivate)
 
 add_test(NAME ksmserver-x11LockerTest COMMAND x11LockerTest)
 ecm_mark_as_test(x11LockerTest)
+
+add_executable(virtualKeyboardLockTest virtualkeyboardtest.cpp
+    ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h
+    ../x11locker.cpp ../globalaccel.cpp ../abstractlocker.cpp ../kscreenlocker_logging.cpp)
+target_link_libraries(virtualKeyboardLockTest PRIVATE Qt::Test Qt::Widgets Qt::Quick Qt::GuiPrivate
+    KF6::GlobalAccel KF6::I18n KF6::I18nQml KF6::WindowSystem X11::X11 XCB::XCB XCB::KEYSYMS XCB::XTEST)
+qt_add_resources(virtualKeyboardLockTest keyboard_test_resources
+    PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"
+    FILES "${CMAKE_SOURCE_DIR}/greeter/virtualkeyboard.qml")
+target_compile_definitions(virtualKeyboardLockTest PRIVATE KEYBOARD_CLIENT_QML="${CMAKE_CURRENT_SOURCE_DIR}/virtualkeyboardtest.qml")
+find_program(XVFB_RUN_EXECUTABLE xvfb-run)
+if(XVFB_RUN_EXECUTABLE)
+    add_test(NAME ksmserver-virtualKeyboardLockTest COMMAND ${XVFB_RUN_EXECUTABLE} -a -s "-screen 0 1920x1080x24"
+        ${CMAKE_COMMAND} -E env QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 SCREENLOCKER_KEYBOARD_TEST_ISOLATED=1
+        $<TARGET_FILE:virtualKeyboardLockTest>)
+else()
+    add_test(NAME ksmserver-virtualKeyboardLockTest COMMAND virtualKeyboardLockTest)
+    set_tests_properties(ksmserver-virtualKeyboardLockTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+set_tests_properties(ksmserver-virtualKeyboardLockTest PROPERTIES TIMEOUT 60)
+
+add_executable(virtualKeyboardViewTest virtualkeyboardviewtest.cpp
+    ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h)
+target_link_libraries(virtualKeyboardViewTest PRIVATE Qt::Test Qt::Quick)
+qt_add_resources(virtualKeyboardViewTest keyboard_view_test_resources
+    PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"
+    FILES "${CMAKE_SOURCE_DIR}/greeter/virtualkeyboard.qml")
+add_test(NAME ksmserver-virtualKeyboardViewTest COMMAND virtualKeyboardViewTest)
+set_tests_properties(ksmserver-virtualKeyboardViewTest PROPERTIES TIMEOUT 30
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+ecm_mark_as_test(virtualKeyboardViewTest)
+ecm_mark_as_test(virtualKeyboardLockTest)
