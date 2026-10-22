@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 
     // The shared workspace footer hosts Qt's in-process keyboard on every init
     // system. The input context must be selected before constructing UnlockApp.
-    qputenv("QT_IM_MODULE", QByteArrayLiteral("qtvirtualkeyboard"));
+    qputenv("QT_IM_MODULE", QByteArrayLiteral("sonicvirtualkeyboard"));
     qunsetenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE");
 
     // Suppresses modal warnings about unwritable configuration files which may
