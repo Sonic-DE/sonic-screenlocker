@@ -5,6 +5,7 @@ SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "greeterapp.h"
+#include "greeterappearance.h"
 #include "greeteripcclient.h"
 #include "kscreensaversettingsbase.h"
 #include "noaccessnetworkaccessmanagerfactory.h"
@@ -122,6 +123,7 @@ public:
 // App
 UnlockApp::UnlockApp(int &argc, char **argv)
     : QGuiApplication(argc, argv)
+    , m_appearance(std::make_unique<GreeterAppearance>())
     , m_resetRequestIgnoreTimer(new QTimer(this))
     , m_delayedLockTimer(nullptr)
     , m_testing(false)
@@ -364,7 +366,7 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
         view->setGeometry(geo);
     });
 
-    Plasma::setupPlasmaStyle(view->engine().get());
+    m_appearance->setupEngine(view->engine().get());
     view->engine()->rootContext()->setContextObject(new KLocalizedQmlContext(view->engine().get()));
     auto oldFactory = view->engine()->networkAccessManagerFactory();
     view->engine()->setNetworkAccessManagerFactory(nullptr);

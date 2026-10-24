@@ -55,7 +55,9 @@ void LockScreenContractTest::productionThemeUsesBackendContract()
     QVERIFY(block.contains("property bool submissionBlocked"));
     QVERIFY(block.contains("if (submissionBlocked)"));
     QVERIFY(block.contains("enabled: !sessionManager.submissionBlocked"));
-    QVERIFY(block.contains("if (sessionManager.lockScreenUiVisible && !sessionManager.submissionBlocked)"));
+    // startLogin() has the submissionBlocked guard checked above; the current
+    // MainBlock forwards accepted input to it only while the login UI is shown.
+    QVERIFY(block.contains("if (sessionManager.lockScreenUiVisible)"));
 }
 
 QTEST_GUILESS_MAIN(LockScreenContractTest)

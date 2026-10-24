@@ -166,14 +166,18 @@ add_test(NAME ksmserver-x11LockerTest COMMAND x11LockerTest)
 ecm_mark_as_test(x11LockerTest)
 
 add_executable(virtualKeyboardLockTest virtualkeyboardtest.cpp
+    ../greeter/greeterappearance.cpp ../greeter/greeterappearance.h
     ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h
     ../x11locker.cpp ../globalaccel.cpp ../abstractlocker.cpp ../kscreenlocker_logging.cpp)
 target_link_libraries(virtualKeyboardLockTest PRIVATE Qt::Test Qt::Widgets Qt::Quick Qt::GuiPrivate
-    KF6::GlobalAccel KF6::I18n KF6::I18nQml KF6::WindowSystem X11::X11 XCB::XCB XCB::KEYSYMS XCB::XTEST)
+    KF6::GlobalAccel KF6::I18n KF6::I18nQml KF6::WindowSystem KF6::ColorScheme KF6::ConfigCore Plasma::Plasma Qt::QuickControls2 X11::X11 XCB::XCB XCB::KEYSYMS XCB::XTEST)
 qt_add_resources(virtualKeyboardLockTest keyboard_test_resources
     PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"
     FILES "${CMAKE_SOURCE_DIR}/greeter/virtualkeyboard.qml")
+qt_add_resources(virtualKeyboardLockTest controls_test_config PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/greeter"
+    FILES "${CMAKE_SOURCE_DIR}/greeter/qtquickcontrols2.conf")
 target_compile_definitions(virtualKeyboardLockTest PRIVATE KEYBOARD_CLIENT_QML="${CMAKE_CURRENT_SOURCE_DIR}/virtualkeyboardtest.qml")
+target_compile_definitions(virtualKeyboardLockTest PRIVATE KEYBOARD_CLIENT_SCREENSHOT="${CMAKE_CURRENT_BINARY_DIR}/keyboard-appearance.png")
 find_program(XVFB_RUN_EXECUTABLE xvfb-run)
 if(XVFB_RUN_EXECUTABLE)
     add_test(NAME ksmserver-virtualKeyboardLockTest COMMAND ${XVFB_RUN_EXECUTABLE} -a -s "-screen 0 1920x1080x24"
@@ -196,3 +200,25 @@ set_tests_properties(ksmserver-virtualKeyboardViewTest PROPERTIES TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 ecm_mark_as_test(virtualKeyboardViewTest)
 ecm_mark_as_test(virtualKeyboardLockTest)
+
+add_executable(greeterAppearanceTest greeterappearancetest.cpp
+    ../greeter/greeterappearance.cpp ../greeter/greeterappearance.h
+    ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h)
+target_link_libraries(greeterAppearanceTest PRIVATE Qt::Test Qt::Quick Qt::QuickControls2 Qt::GuiPrivate KF6::I18nQml KF6::ColorScheme KF6::ConfigCore Plasma::Plasma)
+target_compile_definitions(greeterAppearanceTest PRIVATE APPEARANCE_TEST_QML="${CMAKE_CURRENT_SOURCE_DIR}/greeterappearancetest.qml")
+target_compile_definitions(greeterAppearanceTest PRIVATE APPEARANCE_TEST_SCREENSHOT="${CMAKE_CURRENT_BINARY_DIR}/greeter-appearance.png")
+qt_add_resources(greeterAppearanceTest appearance_test_resources
+    PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"
+    FILES "${CMAKE_SOURCE_DIR}/greeter/virtualkeyboard.qml")
+qt_add_resources(greeterAppearanceTest appearance_controls_config PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/greeter"
+    FILES "${CMAKE_SOURCE_DIR}/greeter/qtquickcontrols2.conf")
+if(XVFB_RUN_EXECUTABLE)
+    add_test(NAME ksmserver-greeterAppearanceTest COMMAND ${XVFB_RUN_EXECUTABLE} -a -s "-screen 0 1000x700x24"
+        ${CMAKE_COMMAND} -E env --unset=QT_QUICK_BACKEND QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1
+        $<TARGET_FILE:greeterAppearanceTest>)
+else()
+    add_test(NAME ksmserver-greeterAppearanceTest COMMAND greeterAppearanceTest)
+    set_tests_properties(ksmserver-greeterAppearanceTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+set_tests_properties(ksmserver-greeterAppearanceTest PROPERTIES TIMEOUT 30)
+ecm_mark_as_test(greeterAppearanceTest)
