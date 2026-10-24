@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <PlasmaQuick/SharedQmlEngine>
 #include <QGuiApplication>
 #include <QUrl>
+#include <memory>
 
 namespace PlasmaQuick
 {
@@ -27,6 +28,7 @@ namespace ScreenLocker
 class WallpaperIntegration;
 class ShellIntegration;
 class VirtualKeyboard;
+class GreeterAppearance;
 
 class UnlockApp : public QGuiApplication
 {
@@ -77,6 +79,7 @@ private:
     void unregisterViewFromKsld(PlasmaQuick::QuickViewSharedEngine *view);
     void notifyAuthenticationSuccess();
 
+    std::unique_ptr<GreeterAppearance> m_appearance;
     QString m_packageName;
     QUrl m_mainQmlPath;
     QList<PlasmaQuick::QuickViewSharedEngine *> m_views;

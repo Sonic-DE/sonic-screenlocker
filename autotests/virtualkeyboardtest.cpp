@@ -3,11 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "../greeter/virtualkeyboard.h"
+#include "../greeter/greeterappearance.h"
 #include "../x11locker.h"
 
+#include <KColorScheme>
 #include <KLocalizedQmlContext>
 #include <QAbstractNativeEventFilter>
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QInputMethod>
 #include <QJsonDocument>
@@ -16,7 +20,9 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QQmlApplicationEngine>
+#include <QQmlExpression>
 #include <QQuickItem>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QScreen>
@@ -78,6 +84,22 @@ public Q_SLOTS:
             {QStringLiteral("footerActivations"), window->property("footerActivations").toInt()},
             {QStringLiteral("embedded"), keyboard->panel() && keyboard->panel()->window() == window}};
         if (auto *panel = keyboard->panel()) {
+            message.insert(QStringLiteral("applicationBackground"), qGuiApp->palette().color(QPalette::Window).name());
+            message.insert(QStringLiteral("schemePath"), qGuiApp->property("KDE_COLOR_SCHEME_PATH").toString());
+            message.insert(QStringLiteral("schemeBackground"), KColorScheme(QPalette::Active, KColorScheme::Window).background().color().name());
+            message.insert(QStringLiteral("controlsStyle"), QQuickStyle::name());
+            if (auto *keys = panel->property("keyboard").value<QObject *>()) {
+                if (auto *style = keys->property("style").value<QObject *>()) {
+                    if (auto *theme = style->property("theme").value<QObject *>()) {
+                        QQmlExpression expression(QQmlEngine::contextForObject(theme), theme, QStringLiteral("Kirigami.Theme"));
+                        if (auto *platformTheme = expression.evaluate().value<QObject *>()) {
+                            message.insert(QStringLiteral("platformTheme"), QString::fromLatin1(platformTheme->metaObject()->className()));
+                        }
+                        message.insert(QStringLiteral("keyboardBackground"), theme->property("keyboardBackgroundColor").value<QColor>().name());
+                        message.insert(QStringLiteral("keyForeground"), theme->property("keyTextColor").value<QColor>().name());
+                    }
+                }
+            }
             message.insert(QStringLiteral("style"), panel->property("keyboardStyleName").toString());
             message.insert(QStringLiteral("panelWidth"), panel->width());
             message.insert(QStringLiteral("panelHeight"), panel->height());
@@ -112,6 +134,7 @@ static int runClient(int argc, char **argv)
     qputenv("QT_IM_MODULE", "sonicvirtualkeyboard");
     qputenv("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE", "1");
     QGuiApplication app(argc, argv);
+    ScreenLocker::GreeterAppearance appearance;
     // Match UnlockApp: the daemon owns X11 grabs and sends logical FocusIn to
     // the registered greeter; NotifyGrab FocusOut must not deactivate Qt input.
     class KeepGreeterFocus : public QAbstractNativeEventFilter {
@@ -125,6 +148,7 @@ static int runClient(int argc, char **argv)
     } focusFilter;
     app.installNativeEventFilter(&focusFilter);
     QQmlApplicationEngine engine;
+    appearance.setupEngine(&engine);
     KLocalization::setupLocalizedContext(&engine);
     ScreenLocker::VirtualKeyboard keyboard;
     engine.load(QUrl::fromLocalFile(QStringLiteral(KEYBOARD_CLIENT_QML)));
@@ -197,6 +221,9 @@ private Q_SLOTS:
         clientEnvironment.insert(QStringLiteral("QT_VIRTUALKEYBOARD_DESKTOP_DISABLE"), QStringLiteral("1"));
         client.setProcessEnvironment(clientEnvironment);
         client.setProcessChannelMode(QProcess::SeparateChannels);
+        QObject::connect(&client, &QProcess::readyReadStandardError, &client, [&] {
+            qInfo().noquote() << client.readAllStandardError();
+        });
         QJsonObject state;
         QObject::connect(&client, &QProcess::readyReadStandardOutput, &client, [&] {
             while (client.canReadLine()) {
@@ -265,6 +292,19 @@ private Q_SLOTS:
         QTRY_VERIFY2_WITH_TIMEOUT(keyboardPixels() > 10000,
                                   QByteArray(QJsonDocument(state).toJson(QJsonDocument::Compact) + client.readAllStandardError()).constData(),
                                   5000);
+        const auto palettePixels = [](const QColor &expected) {
+            const auto image = rootImage();
+            int count = 0;
+            for (int y = image.height() * 2 / 3; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    count += image.pixelColor(x, y) == expected;
+                }
+            }
+            return count;
+        };
+        QVERIFY(rootImage().save(QStringLiteral(KEYBOARD_CLIENT_SCREENSHOT)));
+        QTRY_VERIFY2_WITH_TIMEOUT(palettePixels(QColor(24, 27, 40)) > 1000, QJsonDocument(state).toJson(QJsonDocument::Compact).constData(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(palettePixels(QColor(102, 194, 242)) > 50, 5000);
         QWidget rogue;
         rogue.setWindowFlags(Qt::Window | Qt::X11BypassWindowManagerHint | Qt::WindowDoesNotAcceptFocus);
         rogue.setAutoFillBackground(true);
@@ -314,6 +354,15 @@ int main(int argc, char **argv)
     qputenv("XDG_CONFIG_HOME", (home.path() + QStringLiteral("/config")).toUtf8());
     qputenv("XDG_CONFIG_DIRS", (home.path() + QStringLiteral("/empty-config")).toUtf8());
     qputenv("XDG_CACHE_HOME", (home.path() + QStringLiteral("/cache")).toUtf8());
+    QDir().mkpath(home.path() + QStringLiteral("/config"));
+    QFile globals(home.path() + QStringLiteral("/config/kdeglobals"));
+    if (!globals.open(QIODevice::WriteOnly)) {
+        return 1;
+    }
+    globals.write(
+        "[Colors:Window]\nBackgroundNormal=24,27,40\nForegroundNormal=102,194,242\n"
+        "[Colors:Button]\nBackgroundNormal=30,34,51\nForegroundNormal=49,181,235\n");
+    globals.close();
     qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/screenlocker-keyboard-test-bus");
     qputenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent/screenlocker-keyboard-test-system-bus");
     qputenv("QT_NO_XDG_DESKTOP_PORTAL", "1");

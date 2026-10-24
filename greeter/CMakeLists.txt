@@ -27,7 +27,8 @@ ecm_qt_declare_logging_category(kscreenlocker_authenticator_SRCS
 )
 
 set(kscreenlocker_greet_SRCS
-   greeterapp.cpp
+    greeterapp.cpp
+    greeterappearance.cpp
    virtualkeyboard.cpp
    virtualkeyboard.h
    main.cpp
@@ -35,7 +36,8 @@ set(kscreenlocker_greet_SRCS
    greeteripcclient.cpp
    powermanagement.cpp
    ../logind.cpp
-   greeterapp.h
+    greeterapp.h
+    greeterappearance.h
    noaccessnetworkaccessmanagerfactory.h
    greeteripcclient.h
    powermanagement.h
@@ -70,6 +72,7 @@ qt_add_resources(kscreenlocker_greet_SRCS fallbacktheme.qrc)
 qt_add_resources(kscreenlocker_greet_SRCS virtualkeyboard.qrc)
 
 add_executable(kscreenlocker_greet ${kscreenlocker_greet_SRCS})
+qt_add_resources(kscreenlocker_greet controls_config PREFIX "/" FILES "qtquickcontrols2.conf")
 
 ecm_add_qml_module(kscreenlocker_greet URI org.kde.kscreenlocker VERSION 1.0)
 
@@ -78,6 +81,9 @@ target_link_libraries(kscreenlocker_greet PRIVATE
     kscreenlocker_authenticator
     KF6::Package
     KF6::Crash
+    KF6::ColorScheme
+    Plasma::Plasma
+    Qt::QuickControls2
     KF6::I18n
     KF6::ConfigGui
     KF6::KIOCore
