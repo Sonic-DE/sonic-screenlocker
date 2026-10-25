@@ -50,6 +50,29 @@ public:
     QQuickWindow *window = nullptr;
     QObject *editor = nullptr;
     ScreenLocker::VirtualKeyboard *keyboard = nullptr;
+    int wheelEvents = 0;
+    int layoutResets = 0;
+
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        if (event->type() == QEvent::Wheel) {
+            ++wheelEvents;
+        }
+        return false;
+    }
+
+    static QQuickItem *namedItem(QQuickItem *item, const QString &name)
+    {
+        if (item->objectName() == name && item->isVisible()) {
+            return item;
+        }
+        for (auto *child : item->childItems()) {
+            if (auto *found = namedItem(child, name)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
 
     static QQuickItem *footerButton(QQuickItem *item)
     {
@@ -83,12 +106,31 @@ public Q_SLOTS:
             {QStringLiteral("focused"), QGuiApplication::focusObject() == editor},
             {QStringLiteral("footerActivations"), window->property("footerActivations").toInt()},
             {QStringLiteral("embedded"), keyboard->panel() && keyboard->panel()->window() == window}};
+        message.insert(QStringLiteral("wheelEvents"), wheelEvents);
+        message.insert(QStringLiteral("layoutResets"), layoutResets);
         if (auto *panel = keyboard->panel()) {
+            if (auto *key = namedItem(panel, QStringLiteral("changeLanguageKey"))) {
+                const auto point = window->mapToGlobal(key->mapToScene(QPointF(key->width() / 2, key->height() / 2)).toPoint());
+                message.insert(QStringLiteral("languageKeyX"), point.x());
+                message.insert(QStringLiteral("languageKeyY"), point.y());
+            }
             message.insert(QStringLiteral("applicationBackground"), qGuiApp->palette().color(QPalette::Window).name());
             message.insert(QStringLiteral("schemePath"), qGuiApp->property("KDE_COLOR_SCHEME_PATH").toString());
             message.insert(QStringLiteral("schemeBackground"), KColorScheme(QPalette::Active, KColorScheme::Window).background().color().name());
             message.insert(QStringLiteral("controlsStyle"), QQuickStyle::name());
             if (auto *keys = panel->property("keyboard").value<QObject *>()) {
+                if (auto *popup = keys->findChild<QQuickItem *>(QStringLiteral("languagePopupList"))) {
+                    message.insert(QStringLiteral("layoutsVisible"), popup->isVisible());
+                    message.insert(QStringLiteral("layoutsCount"), popup->property("count").toInt());
+                    message.insert(QStringLiteral("layoutsY"), popup->property("contentY").toDouble());
+                    message.insert(QStringLiteral("layoutsInteractive"), popup->property("interactive").toBool());
+                    message.insert(QStringLiteral("layoutsMoving"), popup->property("moving").toBool());
+                    message.insert(QStringLiteral("layoutsContentHeight"), popup->property("contentHeight").toDouble());
+                    message.insert(QStringLiteral("layoutsHeight"), popup->height());
+                    const auto point = window->mapToGlobal(popup->mapToScene(QPointF(popup->width() / 2, popup->height() / 2)).toPoint());
+                    message.insert(QStringLiteral("layoutsX"), point.x());
+                    message.insert(QStringLiteral("layoutsCenterY"), point.y());
+                }
                 if (auto *style = keys->property("style").value<QObject *>()) {
                     if (auto *theme = style->property("theme").value<QObject *>()) {
                         QQmlExpression expression(QQmlEngine::contextForObject(theme), theme, QStringLiteral("Kirigami.Theme"));
@@ -138,12 +180,15 @@ static int runClient(int argc, char **argv)
     // Match UnlockApp: the daemon owns X11 grabs and sends logical FocusIn to
     // the registered greeter; NotifyGrab FocusOut must not deactivate Qt input.
     class KeepGreeterFocus : public QAbstractNativeEventFilter {
+    public:
         bool nativeEventFilter(const QByteArray &type, void *message, qintptr *) override
         {
             if (type != QByteArrayLiteral("xcb_generic_event_t")) {
                 return false;
             }
-            return (static_cast<xcb_generic_event_t *>(message)->response_type & ~0x80) == XCB_FOCUS_OUT;
+            const auto *event = static_cast<xcb_generic_event_t *>(message);
+            const auto response = event->response_type & ~0x80;
+            return response == XCB_FOCUS_OUT;
         }
     } focusFilter;
     app.installNativeEventFilter(&focusFilter);
@@ -165,6 +210,7 @@ static int runClient(int argc, char **argv)
     status.window = window;
     status.editor = editor;
     status.keyboard = &keyboard;
+    window->installEventFilter(&status);
     QObject::connect(editor, SIGNAL(textChanged()), &status, SLOT(report()));
     QObject::connect(QGuiApplication::inputMethod(), &QInputMethod::visibleChanged, &status, &KeyboardClient::report);
     QObject::connect(QGuiApplication::inputMethod(), &QInputMethod::keyboardRectangleChanged, &status, &KeyboardClient::report);
@@ -179,6 +225,20 @@ static int runClient(int argc, char **argv)
         const QByteArray command(buffer, qMax<qint64>(0, count));
         if (command.contains("quit")) {
             app.quit();
+        } else if (command.contains("layoutsTop")) {
+            if (auto *panel = keyboard.panel()) {
+                if (auto *keys = panel->property("keyboard").value<QObject *>()) {
+                    if (auto *popup = keys->findChild<QQuickItem *>(QStringLiteral("languagePopupList"))) {
+                        QMetaObject::invokeMethod(popup, "cancelFlick");
+                        // Isolate wheel delivery from intentional item snapping.
+                        // This override belongs only to the regression fixture.
+                        popup->setProperty("snapMode", 0); // ListView.NoSnap
+                        popup->setProperty("contentY", popup->property("originY"));
+                        ++status.layoutResets;
+                        status.report();
+                    }
+                }
+            }
         } else if (command.contains("activateFooter")) {
             if (auto *button = KeyboardClient::footerButton(window->contentItem())) {
                 if (QGuiApplication::inputMethod()->isVisible()) {
@@ -274,7 +334,7 @@ private Q_SLOTS:
         QTRY_VERIFY2_WITH_TIMEOUT(state.value(QStringLiteral("visible")).toBool() && state.contains(QStringLiteral("keyX")),
                                   QByteArray(QJsonDocument(state).toJson(QJsonDocument::Compact) + client.readAllStandardError()).constData(),
                                   5000);
-        QCOMPARE(state.value(QStringLiteral("footerActivations")).toInt(), 1);
+        QTRY_COMPARE(state.value(QStringLiteral("footerActivations")).toInt(), 1);
         QCOMPARE(state.value(QStringLiteral("style")).toString(), QStringLiteral("Breeze"));
         auto keyboardPixels = [&] {
             const auto image = rootImage();
@@ -305,6 +365,74 @@ private Q_SLOTS:
         QVERIFY(rootImage().save(QStringLiteral(KEYBOARD_CLIENT_SCREENSHOT)));
         QTRY_VERIFY2_WITH_TIMEOUT(palettePixels(QColor(24, 27, 40)) > 1000, QJsonDocument(state).toJson(QJsonDocument::Compact).constData(), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(palettePixels(QColor(102, 194, 242)) > 50, 5000);
+        auto *connection = QX11Info::connection();
+        QTRY_VERIFY(state.contains(QStringLiteral("languageKeyX")));
+        const int languageX = state.value(QStringLiteral("languageKeyX")).toInt();
+        const int languageY = state.value(QStringLiteral("languageKeyY")).toInt();
+        xcb_test_fake_input(connection, XCB_MOTION_NOTIFY, 0, XCB_CURRENT_TIME, root, languageX, languageY, 0);
+        xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 1, XCB_CURRENT_TIME, root, 0, 0, 0);
+        xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 1, XCB_CURRENT_TIME, root, 0, 0, 0);
+        xcb_flush(connection);
+        QTRY_VERIFY2_WITH_TIMEOUT(state.value(QStringLiteral("layoutsVisible")).toBool(),
+                                  QJsonDocument(state).toJson(QJsonDocument::Compact).constData(),
+                                  5000);
+        QVERIFY(state.value(QStringLiteral("layoutsCount")).toInt() > 5);
+        QVERIFY(state.value(QStringLiteral("layoutsInteractive")).toBool());
+        const int resetsBefore = state.value(QStringLiteral("layoutResets")).toInt();
+        client.write("layoutsTop\n");
+        QTRY_COMPARE(state.value(QStringLiteral("layoutResets")).toInt(), resetsBefore + 1);
+        QTRY_VERIFY(qAbs(state.value(QStringLiteral("layoutsY")).toDouble()) < 1);
+        const int wheelBefore = state.value(QStringLiteral("wheelEvents")).toInt();
+        const int popupX = state.value(QStringLiteral("layoutsX")).toInt();
+        const int popupY = state.value(QStringLiteral("layoutsCenterY")).toInt();
+        xcb_test_fake_input(connection, XCB_MOTION_NOTIFY, 0, XCB_CURRENT_TIME, root, popupX, popupY, 0);
+        for (int i = 0; i < 5; ++i) {
+            const auto previousY = state.value(QStringLiteral("layoutsY")).toDouble();
+            xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 5, 20, root, 0, 0, 0);
+            xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 5, XCB_CURRENT_TIME, root, 0, 0, 0);
+            xcb_flush(connection);
+            QTRY_COMPARE_WITH_TIMEOUT(state.value(QStringLiteral("wheelEvents")).toInt(), wheelBefore + i + 1, 5000);
+            QTRY_VERIFY2_WITH_TIMEOUT(state.value(QStringLiteral("layoutsY")).toDouble() > previousY + 10,
+                                      QJsonDocument(state).toJson(QJsonDocument::Compact).constData(),
+                                      5000);
+            QTRY_VERIFY_WITH_TIMEOUT(!state.value(QStringLiteral("layoutsMoving")).toBool(), 5000);
+        }
+        xcb_flush(connection);
+        QTRY_COMPARE_WITH_TIMEOUT(state.value(QStringLiteral("wheelEvents")).toInt(), wheelBefore + 5, 5000);
+        QTRY_VERIFY2_WITH_TIMEOUT(state.value(QStringLiteral("layoutsY")).toDouble() > 10,
+                                  QJsonDocument(state).toJson(QJsonDocument::Compact).constData(),
+                                  5000);
+        for (int i = 0; i < 5; ++i) {
+            const auto previousY = state.value(QStringLiteral("layoutsY")).toDouble();
+            xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 4, 20, root, 0, 0, 0);
+            xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 4, XCB_CURRENT_TIME, root, 0, 0, 0);
+            xcb_flush(connection);
+            QTRY_COMPARE_WITH_TIMEOUT(state.value(QStringLiteral("wheelEvents")).toInt(), wheelBefore + i + 6, 5000);
+            QTRY_VERIFY2_WITH_TIMEOUT(state.value(QStringLiteral("layoutsY")).toDouble() < previousY - 10,
+                                      QJsonDocument(state).toJson(QJsonDocument::Compact).constData(),
+                                      5000);
+            QTRY_VERIFY_WITH_TIMEOUT(!state.value(QStringLiteral("layoutsMoving")).toBool(), 5000);
+        }
+        xcb_flush(connection);
+        QTRY_COMPARE_WITH_TIMEOUT(state.value(QStringLiteral("wheelEvents")).toInt(), wheelBefore + 10, 5000);
+        // Wheel flick distances can differ slightly with event timing. Continue
+        // upward to check the boundary rather than assume equal inertial travel.
+        for (int i = 0; i < 5 && state.value(QStringLiteral("layoutsY")).toDouble() >= 1; ++i) {
+            xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 4, 20, root, 0, 0, 0);
+            xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 4, XCB_CURRENT_TIME, root, 0, 0, 0);
+            xcb_flush(connection);
+            QTRY_COMPARE_WITH_TIMEOUT(state.value(QStringLiteral("wheelEvents")).toInt(), wheelBefore + 11 + i, 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(!state.value(QStringLiteral("layoutsMoving")).toBool(), 5000);
+        }
+        QTRY_VERIFY2_WITH_TIMEOUT(qAbs(state.value(QStringLiteral("layoutsY")).toDouble()) < 1,
+                                  QJsonDocument(state).toJson(QJsonDocument::Compact).constData(),
+                                  5000);
+        // Dismiss without selecting a different layout before the typing checks.
+        xcb_test_fake_input(connection, XCB_MOTION_NOTIFY, 0, XCB_CURRENT_TIME, root, 1900, 700, 0);
+        xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 1, XCB_CURRENT_TIME, root, 0, 0, 0);
+        xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 1, XCB_CURRENT_TIME, root, 0, 0, 0);
+        xcb_flush(connection);
+        QTRY_VERIFY(!state.value(QStringLiteral("layoutsVisible")).toBool());
         QWidget rogue;
         rogue.setWindowFlags(Qt::Window | Qt::X11BypassWindowManagerHint | Qt::WindowDoesNotAcceptFocus);
         rogue.setAutoFillBackground(true);
@@ -320,7 +448,6 @@ private Q_SLOTS:
 
         const auto x = state.value(QStringLiteral("keyX")).toInt();
         const auto y = state.value(QStringLiteral("keyY")).toInt();
-        auto *connection = QX11Info::connection();
         xcb_test_fake_input(connection, XCB_MOTION_NOTIFY, 0, XCB_CURRENT_TIME, root, x, y, 0);
         xcb_test_fake_input(connection, XCB_BUTTON_PRESS, 1, XCB_CURRENT_TIME, root, 0, 0, 0);
         xcb_test_fake_input(connection, XCB_BUTTON_RELEASE, 1, XCB_CURRENT_TIME, root, 0, 0, 0);

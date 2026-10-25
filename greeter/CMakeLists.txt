@@ -91,6 +91,7 @@ target_link_libraries(kscreenlocker_greet PRIVATE
     KF6::I18nQml
     Plasma::PlasmaQuick
     Qt::DBus
+    Qt::GuiPrivate
     Qt::Quick
     Qt::Qml
     Qt::Network
