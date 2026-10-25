@@ -191,7 +191,7 @@ set_tests_properties(ksmserver-virtualKeyboardLockTest PROPERTIES TIMEOUT 60)
 
 add_executable(virtualKeyboardViewTest virtualkeyboardviewtest.cpp
     ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h)
-target_link_libraries(virtualKeyboardViewTest PRIVATE Qt::Test Qt::Quick)
+target_link_libraries(virtualKeyboardViewTest PRIVATE Qt::Test Qt::Quick Qt::GuiPrivate)
 qt_add_resources(virtualKeyboardViewTest keyboard_view_test_resources
     PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"
     FILES "${CMAKE_SOURCE_DIR}/greeter/virtualkeyboard.qml")

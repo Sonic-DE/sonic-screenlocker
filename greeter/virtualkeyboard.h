@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <QAbstractNativeEventFilter>
 #include <QHash>
 #include <QObject>
 #include <QPointer>
@@ -14,7 +15,7 @@ class QQuickWindow;
 
 namespace ScreenLocker {
 /** Hosts Qt's existing input panel only in registered greeter scenes. */
-class VirtualKeyboard : public QObject {
+class VirtualKeyboard : public QObject, public QAbstractNativeEventFilter {
 public:
     explicit VirtualKeyboard(QObject *parent = nullptr);
     ~VirtualKeyboard() override;
@@ -23,6 +24,7 @@ public:
     QQuickItem *panel() const;
 
 private:
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     void activateView(QQuickWindow *view);
     QHash<QQuickWindow *, QPointer<QQmlEngine>> m_views;
     QPointer<QQuickItem> m_panel;
