@@ -1,6 +1,7 @@
 /*
 SPDX-FileCopyrightText: 2016 Martin Gräßlin <mgraesslin@kde.org>
 SPDX-FileCopyrightText: 2017 David Edmundson <davidedmundson@kde.org>
+SPDX-FileCopyrightText: 2026 SonicDE contributors
 
 SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
@@ -34,9 +35,11 @@ void ShellIntegration::init()
 
 QString ShellIntegration::defaultShell() const
 {
-    KSharedConfig::Ptr startupConf = KSharedConfig::openConfig(QStringLiteral("plasmashellrc"));
+    const bool sonicSession = qgetenv("XDG_CURRENT_DESKTOP").split(':').contains(QByteArrayLiteral("SonicDE"));
+    KSharedConfig::Ptr startupConf = KSharedConfig::openConfig(sonicSession ? QStringLiteral("sonicshellrc") : QStringLiteral("plasmashellrc"));
     KConfigGroup startupConfGroup(startupConf, QStringLiteral("Shell"));
-    const QString defaultValue = qEnvironmentVariable("PLASMA_DEFAULT_SHELL", QStringLiteral("org.kde.plasma.desktop"));
+    const QString defaultValue = sonicSession ? qEnvironmentVariable("SONIC_DEFAULT_SHELL", QStringLiteral("org.sonicde.desktop"))
+                                              : qEnvironmentVariable("PLASMA_DEFAULT_SHELL", QStringLiteral("org.kde.plasma.desktop"));
     QString value = startupConfGroup.readEntry("ShellPackage", defaultValue);
 
     // In the global theme an empty value was written, make sure we still return a shell package

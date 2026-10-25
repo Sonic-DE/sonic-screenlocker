@@ -70,9 +70,10 @@ SPDX-License-Identifier: GPL-2.0-or-later
 // *must* be "0" for every public commit!
 #define TEST_SCREENSAVER 0
 
-static const QString s_plasmaShellService = QStringLiteral("org.kde.plasmashell");
-static const QString s_osdServicePath = QStringLiteral("/org/kde/osdService");
-static const QString s_osdServiceInterface = QStringLiteral("org.kde.osdService");
+static const bool s_sonicSession = qgetenv("XDG_CURRENT_DESKTOP").split(':').contains(QByteArrayLiteral("SonicDE"));
+static const QString s_plasmaShellService = s_sonicSession ? QStringLiteral("org.sonicde.sonicshell") : QStringLiteral("org.kde.plasmashell");
+static const QString s_osdServicePath = s_sonicSession ? QStringLiteral("/org/sonicde/osdService") : QStringLiteral("/org/kde/osdService");
+static const QString s_osdServiceInterface = s_sonicSession ? QStringLiteral("org.sonicde.osdService") : QStringLiteral("org.kde.osdService");
 
 using namespace Qt::Literals;
 
@@ -659,7 +660,7 @@ void UnlockApp::setShell(const QString &shell)
 
     if (!verifyPackageApi(package)) {
         qCWarning(KSCREENLOCKER_GREET) << "Lockscreen QML outdated, falling back to default";
-        package.setPath(QStringLiteral("org.kde.plasma.desktop"));
+        package.setPath(s_sonicSession ? QStringLiteral("org.sonicde.desktop") : QStringLiteral("org.kde.plasma.desktop"));
     }
 
     m_mainQmlPath = package.fileUrl("lockscreenmainscript");
