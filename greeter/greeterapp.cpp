@@ -683,6 +683,9 @@ void UnlockApp::lockImmediately()
 bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj != this && event->type() == QEvent::Show) {
+        if (obj->inherits("InputPanelWindow")) {
+            obj->setProperty("settingsAvailable", false);
+        }
         PlasmaQuick::QuickViewSharedEngine *view = nullptr;
         for (PlasmaQuick::QuickViewSharedEngine *v : std::as_const(m_views)) {
             if (v == obj) {
