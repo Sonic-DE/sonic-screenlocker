@@ -12,7 +12,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <QDBusServiceWatcher>
 #include <QStandardPaths>
 
-#include <kscreenlocker_logging.h>
+#include <Sonic/Logging/Log>
 
 const static QString s_login1Service = QStringLiteral("org.freedesktop.login1");
 const static QString s_login1Path = QStringLiteral("/org/freedesktop/login1");
@@ -128,11 +128,11 @@ void LogindIntegration::commonServiceRegistered(QDBusPendingCallWatcher *watcher
             return;
         }
         if (!reply.isValid()) {
-            qCDebug(KSCREENLOCKER) << "The session is not registered: " << reply.error().message();
+            sonicDebug() << "The session is not registered: " << reply.error().message();
             return;
         }
         m_sessionPath = reply.value().path();
-        qCDebug(KSCREENLOCKER) << "Session path:" << m_sessionPath;
+        sonicDebug() << "Session path:" << m_sessionPath;
 
         // connections need to be done this way as the object exposes both method and signal
         // with name "Lock"/"Unlock". Qt is not able to automatically handle this.
@@ -208,7 +208,7 @@ bool LogindIntegration::isLocked() const
     if (reply.isValid()) {
         return reply.value().variant().toBool();
     }
-    qCDebug(KSCREENLOCKER()) << reply.error();
+    sonicDebug() << reply.error();
     return false;
 }
 

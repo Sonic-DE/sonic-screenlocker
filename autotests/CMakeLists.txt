@@ -1,5 +1,8 @@
 include(ECMMarkAsTest)
 
+# Every test that compiles logging screen locker code needs a component of its own.
+set(sonic_logging_component_SRC ${CMAKE_CURRENT_SOURCE_DIR}/sonic_logging_component.cpp)
+
 #######################################
 # LogindTest
 #######################################
@@ -7,11 +10,11 @@ set(logindTest_SRCS
     logindtest.cpp
     fakelogind.cpp
     ../logind.cpp
-    ../kscreenlocker_logging.cpp
+    ${sonic_logging_component_SRC}
 )
 
 add_executable(logindTest ${logindTest_SRCS})
-target_link_libraries(logindTest Qt::DBus Qt::Test KF6::I18n)
+target_link_libraries(logindTest Qt::DBus Qt::Test KF6::I18n Sonic::Logging)
 add_test(NAME ksmserver-logindTest COMMAND logindTest)
 ecm_mark_as_test(logindTest)
 
@@ -48,7 +51,7 @@ if (PamWrapper_FOUND)
     set(PamFailureDelayTestModule "${CMAKE_CURRENT_BINARY_DIR}/pam_failure_delay_test_module${CMAKE_SHARED_MODULE_SUFFIX}")
     configure_file(data/failure_delay_test.in "${PamTestServiceDir}/failure_delay_test")
     configure_file(data/promptless_failure_test.in "${PamTestServiceDir}/promptless_failure_test")
-    add_executable(pamTest pamtest.cpp)
+    add_executable(pamTest pamtest.cpp ${sonic_logging_component_SRC})
     add_dependencies(pamTest kscreenlocker_worker)
     target_link_libraries(pamTest Qt::Test kscreenlocker_authenticator)
     target_compile_definitions(pamTest PRIVATE
@@ -62,7 +65,7 @@ if (PamWrapper_FOUND)
         ENVIRONMENT "${PamTestEnvironment};PAM_MATRIX_PASSWD=${CMAKE_CURRENT_SOURCE_DIR}/data/test_db"
     )
 
-    add_executable(pamDelayTest pamdelaytest.cpp)
+    add_executable(pamDelayTest pamdelaytest.cpp ${sonic_logging_component_SRC})
     target_link_libraries(pamDelayTest Qt::Test kscreenlocker_authenticator)
     target_compile_definitions(pamDelayTest PRIVATE PAM_TEST_SERVICE_DIR="${PamTestServiceDir}")
     add_dependencies(pamDelayTest pam_failure_delay_test_module kscreenlocker_worker)
@@ -73,7 +76,7 @@ if (PamWrapper_FOUND)
         ENVIRONMENT "${PamTestEnvironment}"
     )
 
-    add_executable(pamAuthenticatorsTest pamauthenticatorstest.cpp)
+    add_executable(pamAuthenticatorsTest pamauthenticatorstest.cpp ${sonic_logging_component_SRC})
     target_link_libraries(pamAuthenticatorsTest Qt::Test kscreenlocker_authenticator)
     add_dependencies(pamAuthenticatorsTest pam_failure_delay_test_module kscreenlocker_worker)
     add_test(NAME ksmserver-pamAuthenticatorsTest COMMAND pamAuthenticatorsTest)
@@ -84,7 +87,7 @@ if (PamWrapper_FOUND)
     )
 
     if(NOT KSCREENLOCKER_HAVE_PAM_FAIL_DELAY)
-        add_executable(pamNativeDelayTest pamnativedelaytest.cpp)
+        add_executable(pamNativeDelayTest pamnativedelaytest.cpp ${sonic_logging_component_SRC})
         target_link_libraries(pamNativeDelayTest Qt::Test kscreenlocker_authenticator)
         add_dependencies(pamNativeDelayTest pam_failure_delay_test_module kscreenlocker_worker)
         add_test(NAME ksmserver-pamNativeDelayTest COMMAND pamNativeDelayTest)
@@ -100,7 +103,7 @@ endif()
 
 if(EXISTS "${SCREENLOCKER_DESKTOP_PACKAGE_DIR}/contents/lockscreen/LockScreenUi.qml"
    AND EXISTS "${SCREENLOCKER_DESKTOP_PACKAGE_DIR}/contents/lockscreen/MainBlock.qml")
-    add_executable(lockScreenContractTest lockscreencontracttest.cpp)
+    add_executable(lockScreenContractTest lockscreencontracttest.cpp ${sonic_logging_component_SRC})
     target_link_libraries(lockScreenContractTest Qt::Test kscreenlocker_authenticator)
     target_compile_definitions(lockScreenContractTest PRIVATE
         SCREENLOCKER_LOCKSCREEN_UI="${SCREENLOCKER_DESKTOP_PACKAGE_DIR}/contents/lockscreen/LockScreenUi.qml"
@@ -145,11 +148,12 @@ set(x11LockerTest_SRCS
     ../x11locker.cpp
     ../globalaccel.cpp
     ../abstractlocker.cpp
-    ../kscreenlocker_logging.cpp
+    ${sonic_logging_component_SRC}
 )
 
 add_executable(x11LockerTest ${x11LockerTest_SRCS})
 target_link_libraries(x11LockerTest
+    Sonic::Logging
     KF6::GlobalAccel
     KF6::I18n
     KF6::WindowSystem
@@ -168,8 +172,8 @@ ecm_mark_as_test(x11LockerTest)
 add_executable(virtualKeyboardLockTest virtualkeyboardtest.cpp
     ../greeter/greeterappearance.cpp ../greeter/greeterappearance.h
     ../greeter/virtualkeyboard.cpp ../greeter/virtualkeyboard.h
-    ../x11locker.cpp ../globalaccel.cpp ../abstractlocker.cpp ../kscreenlocker_logging.cpp)
-target_link_libraries(virtualKeyboardLockTest PRIVATE Qt::Test Qt::Widgets Qt::Quick Qt::GuiPrivate
+    ../x11locker.cpp ../globalaccel.cpp ../abstractlocker.cpp ${sonic_logging_component_SRC})
+target_link_libraries(virtualKeyboardLockTest PRIVATE Sonic::Logging Qt::Test Qt::Widgets Qt::Quick Qt::GuiPrivate
     KF6::GlobalAccel KF6::I18n KF6::I18nQml KF6::WindowSystem KF6::ColorScheme KF6::ConfigCore Plasma::Plasma Qt::QuickControls2 X11::X11 XCB::XCB XCB::KEYSYMS XCB::XTEST)
 qt_add_resources(virtualKeyboardLockTest keyboard_test_resources
     PREFIX "/kscreenlocker" BASE "${CMAKE_SOURCE_DIR}/greeter"

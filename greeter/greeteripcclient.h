@@ -5,21 +5,25 @@
 */
 #pragma once
 
-#include <QDataStream>
+#include <QByteArray>
 #include <QHash>
-#include <QLocalSocket>
 #include <QObject>
 #include <QRect>
 #include <QString>
 #include <functional>
 
+namespace Sonic::Ipc {
+class Client;
+class Connection;
+}
+
 /**
  * @class GreeterIpcClient
- * @brief Custom IPC client for greeter communication using QLocalSocket.
+ * @brief Custom IPC client for greeter communication over Sonic IPC frames.
  *
  * This class provides the client-side communication with the GreeterIpcServer
- * running in KSldApp. It uses QLocalSocket/QLocalServer with QDataStream
- * for reliable local IPC.
+ * running in KSldApp. Each message is one frame whose type is the message
+ * type; the payload keeps the QDataStream fields [type][id][arguments...].
  *
  * The greeter uses this client to:
  * - Register/unregister greeter windows
@@ -121,19 +125,16 @@ public Q_SLOTS:
      */
     void requestFocus(const QString &screenName);
 
-private Q_SLOTS:
-    void handleConnected();
-    void handleDisconnected();
-    void handleError(QLocalSocket::LocalSocketError socketError);
-    void handleDataAvailable();
-
 private:
+    void handleConnected(Sonic::Ipc::Connection *connection);
+    void handleFrame(quint32 frameType, const QByteArray &payload);
+
     /**
-     * Sends a message to the server.
+     * Sends one message to the server as one frame.
      * @param messageType The type of message.
-     * @param data The message data.
+     * @param block The message's stream bytes, starting with [type][id].
      */
-    void sendMessage(quint32 messageType, QDataStream &data);
+    void send(quint32 messageType, const QByteArray &block);
 
     /**
      * Message types for IPC communication.
@@ -148,7 +149,8 @@ private:
         MsgResponse = 100,
     };
 
-    QLocalSocket *m_socket = nullptr;
+    Sonic::Ipc::Client *m_client = nullptr;
+    Sonic::Ipc::Connection *m_connection = nullptr;
     quint32 m_nextMessageId = 1;
     QHash<quint32, std::function<void(bool)>> m_pendingCallbacks;
 };

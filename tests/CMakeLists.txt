@@ -7,7 +7,8 @@ target_compile_definitions(powermanagement_test PRIVATE -DQML_PATH="${CMAKE_CURR
 target_link_libraries(powermanagement_test Qt::Gui Qt::DBus Qt::Quick)
 ecm_mark_as_test(powermanagement_test)
 
-add_executable(kcheckpass_test kcheckpass_test.cpp)
+# The authenticator objects log through the linking binary's component.
+add_executable(kcheckpass_test kcheckpass_test.cpp ${CMAKE_SOURCE_DIR}/autotests/sonic_logging_component.cpp)
 target_compile_definitions(kcheckpass_test PRIVATE -DQML_FILE="${CMAKE_CURRENT_SOURCE_DIR}/kcheckpass_test.qml")
 target_link_libraries(kcheckpass_test kscreenlocker_authenticator KF6::CoreAddons Qt::Gui Qt::Quick)
 ecm_mark_as_test(kcheckpass_test)

@@ -5,13 +5,14 @@
 */
 #include "greeteripcserver.h"
 
-#include "kscreenlocker_logging.h"
+#include <Sonic/Logging/Log>
 
 #include <QCoreApplication>
 #include <QDataStream>
-#include <QLocalServer>
-#include <QLocalSocket>
-#include <QThread>
+#include <QIODevice>
+
+#include <Sonic/Ipc/Connection>
+#include <Sonic/Ipc/Server>
 
 GreeterIpcServer::GreeterIpcServer(QObject *parent)
     : QObject(parent)
@@ -21,16 +22,9 @@ GreeterIpcServer::GreeterIpcServer(QObject *parent)
 
 GreeterIpcServer::~GreeterIpcServer()
 {
-    if (m_server) {
-        // Disconnect all pending connections
-        for (QLocalSocket *client : m_server->findChildren<QLocalSocket *>()) {
-            client->disconnect();
-            client->close();
-        }
-        m_server->close();
-        delete m_server;
-        m_server = nullptr;
-    }
+    // Sonic::Ipc::Server aborts its connections before closing.
+    delete m_server;
+    m_server = nullptr;
 }
 
 QString GreeterIpcServer::socketName()
@@ -42,119 +36,101 @@ QString GreeterIpcServer::socketName()
 bool GreeterIpcServer::initialize()
 {
     if (m_server) {
-        qCWarning(KSCREENLOCKER) << "GreeterIpcServer: Already initialized";
+        sonicWarning() << "GreeterIpcServer: Already initialized";
         return true;
     }
 
-    m_server = new QLocalServer(this);
+    m_server = new Sonic::Ipc::Server(this);
 
-    // Remove any existing socket with the same name
-    QLocalServer::removeServer(socketName());
-
-    if (!m_server->listen(socketName())) {
-        qCWarning(KSCREENLOCKER) << "GreeterIpcServer: Failed to listen on socket" << socketName() << "Error:" << m_server->errorString();
+    // A stale socket with the same name is replaced; a live one never is.
+    if (!m_server->listen(socketName(), Sonic::Ipc::Server::Access::User, greeterIpcProtocolVersion)) {
+        sonicWarning() << "GreeterIpcServer: Failed to listen on socket" << socketName() << "Error:" << m_server->errorString();
         delete m_server;
         m_server = nullptr;
         return false;
     }
 
-    connect(m_server, &QLocalServer::newConnection, this, &GreeterIpcServer::handleNewConnection);
+    connect(m_server, &Sonic::Ipc::Server::newConnection, this, &GreeterIpcServer::handleNewConnection);
 
     return true;
 }
 
-void GreeterIpcServer::handleNewConnection()
+void GreeterIpcServer::handleNewConnection(Sonic::Ipc::Connection *connection)
 {
-    QLocalSocket *clientSocket = m_server->nextPendingConnection();
-    if (!clientSocket) {
-        return;
-    }
-
-    connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
-        handleDataAvailable(clientSocket);
-    });
-    connect(clientSocket, &QLocalSocket::disconnected, this, [this, clientSocket]() {
-        handleClientDisconnected(clientSocket);
+    connect(connection, &Sonic::Ipc::Connection::frameReceived, this, [this, connection](quint32 frameType, const QByteArray &payload) {
+        processFrame(connection, frameType, payload);
     });
 }
 
-void GreeterIpcServer::handleDataAvailable(QLocalSocket *clientSocket)
+void GreeterIpcServer::processFrame(Sonic::Ipc::Connection *connection, quint32 frameType, const QByteArray &payload)
 {
-    QDataStream in(clientSocket);
+    QDataStream in(payload);
 
     // Read message header: messageType + messageId
-    while (clientSocket->bytesAvailable() >= static_cast<qint64>(sizeof(quint64))) {
-        quint32 messageType;
-        quint32 messageId;
-        in >> messageType >> messageId;
-
-        switch (messageType) {
-        case MsgRegisterWindow: {
-            quint32 winId;
-            QString screenName;
-            in >> winId >> screenName;
-            Q_EMIT greeterWindowRegistered(winId, screenName);
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        case MsgUnregisterWindow: {
-            quint32 winId;
-            in >> winId;
-            Q_EMIT greeterWindowUnregistered(winId);
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        case MsgAuthenticationSuccess: {
-            Q_EMIT greeterAuthenticationSuccess();
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        case MsgGetFocus: {
-            QString screenName;
-            in >> screenName;
-            Q_EMIT greeterGetFocusRequested(screenName);
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        case MsgScreenAdded: {
-            QString screenName;
-            QRect geometry;
-            in >> screenName >> geometry;
-            Q_EMIT screenAdded(screenName, geometry);
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        case MsgScreenRemoved: {
-            QString screenName;
-            in >> screenName;
-            Q_EMIT screenRemoved(screenName);
-            sendResponse(clientSocket, messageId, true);
-            break;
-        }
-        default:
-            qCWarning(KSCREENLOCKER) << "GreeterIpcServer: Unknown message type" << messageType;
-            sendResponse(clientSocket, messageId, false);
-            break;
-        }
-    }
-}
-
-void GreeterIpcServer::handleClientDisconnected(QLocalSocket *clientSocket)
-{
-    m_clientMessageIds.remove(clientSocket);
-    clientSocket->deleteLater();
-}
-
-void GreeterIpcServer::sendResponse(QLocalSocket *clientSocket, quint32 messageId, bool success)
-{
-    if (!clientSocket || clientSocket->state() != QLocalSocket::ConnectedState) {
+    quint32 messageType;
+    quint32 messageId;
+    in >> messageType >> messageId;
+    if (messageType != frameType) {
+        sonicWarning() << "GreeterIpcServer: frame type" << frameType << "doesn't match message type" << messageType;
+        sendResponse(connection, messageId, false);
         return;
     }
 
+    switch (messageType) {
+    case MsgRegisterWindow: {
+        quint32 winId;
+        QString screenName;
+        in >> winId >> screenName;
+        Q_EMIT greeterWindowRegistered(winId, screenName);
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    case MsgUnregisterWindow: {
+        quint32 winId;
+        in >> winId;
+        Q_EMIT greeterWindowUnregistered(winId);
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    case MsgAuthenticationSuccess: {
+        Q_EMIT greeterAuthenticationSuccess();
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    case MsgGetFocus: {
+        QString screenName;
+        in >> screenName;
+        Q_EMIT greeterGetFocusRequested(screenName);
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    case MsgScreenAdded: {
+        QString screenName;
+        QRect geometry;
+        in >> screenName >> geometry;
+        Q_EMIT screenAdded(screenName, geometry);
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    case MsgScreenRemoved: {
+        QString screenName;
+        in >> screenName;
+        Q_EMIT screenRemoved(screenName);
+        sendResponse(connection, messageId, true);
+        break;
+    }
+    default:
+        sonicWarning() << "GreeterIpcServer: Unknown message type" << messageType;
+        sendResponse(connection, messageId, false);
+        break;
+    }
+}
+
+void GreeterIpcServer::sendResponse(Sonic::Ipc::Connection *connection, quint32 messageId, bool success)
+{
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     out << MsgResponse << messageId << static_cast<quint8>(success ? 1 : 0);
 
-    clientSocket->write(block);
-    clientSocket->flush();
+    connection->send(MsgResponse, block);
 }

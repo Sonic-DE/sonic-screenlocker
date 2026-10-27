@@ -5,11 +5,21 @@
 */
 #include "greeteripcclient.h"
 
-#include "kscreenlocker_greet_logging.h"
+#include <Sonic/Logging/Log>
+
+#include <QDataStream>
+#include <QIODevice>
+
+#include <Sonic/Ipc/Client>
+#include <Sonic/Ipc/Connection>
+
+namespace {
+// Sonic IPC protocol version of the greeter socket; KSldApp's GreeterIpcServer ships with it.
+constexpr quint16 greeterIpcProtocolVersion = 1;
+}
 
 GreeterIpcClient::GreeterIpcClient(QObject *parent)
     : QObject(parent)
-    , m_socket(nullptr)
     , m_nextMessageId(1)
 {
 }
@@ -28,19 +38,17 @@ QString GreeterIpcClient::socketName()
 
 bool GreeterIpcClient::connectToHost()
 {
-    if (m_socket) {
-        if (m_socket->state() == QLocalSocket::ConnectedState) {
-            return true;
-        }
-        delete m_socket;
+    if (m_connection) {
+        return true;
     }
-
-    m_socket = new QLocalSocket(this);
-
-    connect(m_socket, &QLocalSocket::connected, this, &GreeterIpcClient::handleConnected);
-    connect(m_socket, &QLocalSocket::disconnected, this, &GreeterIpcClient::handleDisconnected);
-    connect(m_socket, &QLocalSocket::errorOccurred, this, &GreeterIpcClient::handleError);
-    connect(m_socket, &QLocalSocket::readyRead, this, &GreeterIpcClient::handleDataAvailable);
+    if (!m_client) {
+        m_client = new Sonic::Ipc::Client(greeterIpcProtocolVersion, Sonic::Ipc::defaultMaxPayload, this);
+        connect(m_client, &Sonic::Ipc::Client::connected, this, &GreeterIpcClient::handleConnected);
+        connect(m_client, &Sonic::Ipc::Client::connectionFailed, this, [this](const QString &reason) {
+            sonicCritical() << "GreeterIpcClient: Error" << reason;
+            Q_EMIT connectionError(reason);
+        });
+    }
 
     // Get socket name from environment variable set by KSldApp
     QString socketName = QString::fromUtf8(qgetenv("KSCREENLOCKER_IPC_SOCKET"));
@@ -49,113 +57,90 @@ bool GreeterIpcClient::connectToHost()
         socketName = GreeterIpcClient::socketName();
     }
 
-    m_socket->connectToServer(socketName);
+    m_client->connectToServer(socketName);
 
     return true;
 }
 
 void GreeterIpcClient::disconnectFromHost()
 {
-    if (m_socket) {
-        m_socket->disconnect();
-        m_socket->close();
-        m_socket->deleteLater();
-        m_socket = nullptr;
+    m_connection = nullptr;
+    if (m_client) {
+        m_client->disconnectFromServer();
     }
 }
 
 bool GreeterIpcClient::isConnected() const
 {
-    return m_socket && m_socket->state() == QLocalSocket::ConnectedState;
+    return m_connection != nullptr;
 }
 
-void GreeterIpcClient::handleConnected()
+void GreeterIpcClient::handleConnected(Sonic::Ipc::Connection *connection)
 {
+    m_connection = connection;
+    connect(connection, &Sonic::Ipc::Connection::frameReceived, this, &GreeterIpcClient::handleFrame);
+    connect(connection, &Sonic::Ipc::Connection::disconnected, this, [this, connection] {
+        if (m_connection == connection) {
+            m_connection = nullptr;
+        }
+        Q_EMIT disconnected();
+    });
     Q_EMIT connected();
 }
 
-void GreeterIpcClient::handleDisconnected()
+void GreeterIpcClient::handleFrame(quint32 frameType, const QByteArray &payload)
 {
-    Q_EMIT disconnected();
-}
+    QDataStream in(payload);
 
-void GreeterIpcClient::handleError(QLocalSocket::LocalSocketError socketError)
-{
-    qCCritical(KSCREENLOCKER_GREET) << "GreeterIpcClient: Error" << socketError << m_socket->errorString();
-    Q_EMIT connectionError(m_socket->errorString());
-}
-
-void GreeterIpcClient::handleDataAvailable()
-{
-    if (!m_socket) {
+    quint32 messageType;
+    quint32 messageId;
+    in >> messageType >> messageId;
+    if (messageType != frameType) {
+        sonicWarning() << "GreeterIpcClient: frame type" << frameType << "doesn't match message type" << messageType;
         return;
     }
 
-    QDataStream in(m_socket);
-
-    while (m_socket->bytesAvailable() >= static_cast<qint64>(sizeof(quint64))) {
-        quint32 messageType;
-        quint32 messageId;
-        in >> messageType >> messageId;
-
-        switch (messageType) {
-        case MsgResponse: {
-            quint8 success;
-            in >> success;
-            auto it = m_pendingCallbacks.find(messageId);
-            if (it != m_pendingCallbacks.end()) {
-                it.value()(success != 0);
-                m_pendingCallbacks.erase(it);
-            }
-            break;
+    switch (messageType) {
+    case MsgResponse: {
+        quint8 success;
+        in >> success;
+        auto it = m_pendingCallbacks.find(messageId);
+        if (it != m_pendingCallbacks.end()) {
+            it.value()(success != 0);
+            m_pendingCallbacks.erase(it);
         }
-        case MsgScreenAdded: {
-            QString screenName;
-            QRect geometry;
-            in >> screenName >> geometry;
-            Q_EMIT screenAdded(screenName, geometry);
-            break;
-        }
-        case MsgScreenRemoved: {
-            QString screenName;
-            in >> screenName;
-            Q_EMIT screenRemoved(screenName);
-            break;
-        }
-        default:
-            qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Unknown message type" << messageType;
-            break;
-        }
+        break;
+    }
+    case MsgScreenAdded: {
+        QString screenName;
+        QRect geometry;
+        in >> screenName >> geometry;
+        Q_EMIT screenAdded(screenName, geometry);
+        break;
+    }
+    case MsgScreenRemoved: {
+        QString screenName;
+        in >> screenName;
+        Q_EMIT screenRemoved(screenName);
+        break;
+    }
+    default:
+        sonicWarning() << "GreeterIpcClient: Unknown message type" << messageType;
+        break;
     }
 }
 
-void GreeterIpcClient::sendMessage(quint32 messageType, QDataStream &data)
+void GreeterIpcClient::send(quint32 messageType, const QByteArray &block)
 {
-    Q_UNUSED(data);
-
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot send message" << messageType;
-        return;
+    if (!m_connection || !m_connection->send(messageType, block)) {
+        sonicWarning() << "GreeterIpcClient: Not connected, cannot send message" << messageType;
     }
-
-    quint32 messageId = m_nextMessageId++;
-
-    QByteArray block;
-    QDataStream out(&block, QIODevice::WriteOnly);
-    out << messageType << messageId;
-
-    // Append the data from the passed stream
-    // We need to get the data that was serialized
-    // Since we can't easily do that, we'll refactor later
-
-    m_socket->write(block);
-    m_socket->flush();
 }
 
 void GreeterIpcClient::registerWindow(uint winId, const QString &screenName)
 {
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot register window";
+    if (!m_connection) {
+        sonicWarning() << "GreeterIpcClient: Not connected, cannot register window";
         return;
     }
 
@@ -165,14 +150,13 @@ void GreeterIpcClient::registerWindow(uint winId, const QString &screenName)
     QDataStream out(&block, QIODevice::WriteOnly);
     out << MsgRegisterWindow << messageId << static_cast<quint32>(winId) << screenName;
 
-    m_socket->write(block);
-    m_socket->flush();
+    send(MsgRegisterWindow, block);
 }
 
 void GreeterIpcClient::unregisterWindow(uint winId)
 {
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot unregister window";
+    if (!m_connection) {
+        sonicWarning() << "GreeterIpcClient: Not connected, cannot unregister window";
         return;
     }
 
@@ -182,14 +166,13 @@ void GreeterIpcClient::unregisterWindow(uint winId)
     QDataStream out(&block, QIODevice::WriteOnly);
     out << MsgUnregisterWindow << messageId << static_cast<quint32>(winId);
 
-    m_socket->write(block);
-    m_socket->flush();
+    send(MsgUnregisterWindow, block);
 }
 
 void GreeterIpcClient::reportAuthenticationSuccess()
 {
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot report auth success";
+    if (!m_connection) {
+        sonicWarning() << "GreeterIpcClient: Not connected, cannot report auth success";
         return;
     }
 
@@ -199,14 +182,13 @@ void GreeterIpcClient::reportAuthenticationSuccess()
     QDataStream out(&block, QIODevice::WriteOnly);
     out << MsgAuthenticationSuccess << messageId;
 
-    m_socket->write(block);
-    m_socket->flush();
+    send(MsgAuthenticationSuccess, block);
 }
 
 void GreeterIpcClient::requestFocus(const QString &screenName)
 {
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        qCWarning(KSCREENLOCKER_GREET) << "GreeterIpcClient: Not connected, cannot request focus";
+    if (!m_connection) {
+        sonicWarning() << "GreeterIpcClient: Not connected, cannot request focus";
         return;
     }
 
@@ -216,6 +198,5 @@ void GreeterIpcClient::requestFocus(const QString &screenName)
     QDataStream out(&block, QIODevice::WriteOnly);
     out << MsgGetFocus << messageId << screenName;
 
-    m_socket->write(block);
-    m_socket->flush();
+    send(MsgGetFocus, block);
 }

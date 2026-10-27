@@ -5,11 +5,12 @@ SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "interface.h"
-#include "kscreenlocker_logging.h"
 #include "kscreensaveradaptor.h"
 #include "ksldapp.h"
+
 #include "powerdevilpolicyagent.h"
 #include "screensaveradaptor.h"
+#include <Sonic/Logging/Log>
 // KDE
 #include <KAuthorized>
 #include <KIdleTime>
@@ -58,7 +59,7 @@ void PowerInhibitor::inhibit(const QString &applicationName, const QString &reas
         watcher->deleteLater();
 
         if (!reply.isValid()) {
-            qCWarning(KSCREENLOCKER) << "org.kde.Solid.PowerManagement.PolicyAgent.AddInhibition failed:" << reply.error();
+            sonicWarning() << "org.kde.Solid.PowerManagement.PolicyAgent.AddInhibition failed:" << reply.error();
             m_cookie = std::unexpected(reply.error());
         } else {
             m_cookie = reply.value();

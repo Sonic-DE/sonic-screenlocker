@@ -7,8 +7,9 @@
 
 #include "pamauthenticators.h"
 #include "config-worker.h"
-#include "kscreenlocker_greet_logging.h"
 #include "pamauthenticatormodel.h"
+
+#include <Sonic/Logging/Log>
 
 #include <KConfigGroup>
 #include <KSharedConfig>
@@ -388,7 +389,7 @@ void PamAuthenticators::clearPendingResponse(const char *reason)
     d->pendingRequestId = 0;
     d->pendingOwner.clear();
     if (hadSubmission) {
-        qCDebug(KSCREENLOCKER_GREET) << "PamAuthenticators: cleared pending response:" << reason;
+        sonicDebug() << "PamAuthenticators: cleared pending response:" << reason;
         Q_EMIT hasPendingResponseChanged();
     }
 }

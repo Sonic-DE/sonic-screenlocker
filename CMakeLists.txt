@@ -14,6 +14,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ECM ${KF6_MIN_VERSION} REQUIRED NO_MODULE)
+find_package(SonicIpc ${KF6_MIN_VERSION} REQUIRED)
+find_package(SonicLogging ${KF6_MIN_VERSION} REQUIRED)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${ECM_MODULE_PATH} )
 
 include(KDEInstallDirs)
@@ -184,15 +186,6 @@ set(ksld_SRCS
    greeteripcserver.h
 )
 
-ecm_qt_declare_logging_category(ksld_SRCS
-    HEADER kscreenlocker_logging.h
-    IDENTIFIER KSCREENLOCKER
-    CATEGORY_NAME kscreenlocker
-    DEFAULT_SEVERITY Warning
-    DESCRIPTION "KScreenLocker"
-    EXPORT KSCREENLOCKER
-)
-
 qt_add_dbus_adaptor(ksld_SRCS ${screensaver_dbusXML} interface.h ScreenLocker::Interface)
 qt_add_dbus_adaptor(ksld_SRCS ${kscreensaver_dbusXML} interface.h ScreenLocker::Interface kscreensaveradaptor KScreenSaverAdaptor)
 qt_add_dbus_interface(ksld_SRCS ${powerdevilpolicyagent_xml} powerdevilpolicyagent)
@@ -216,6 +209,8 @@ PRIVATE
    X11::X11
    XCB::XCB
    XCB::KEYSYMS
+   Sonic::Ipc
+   Sonic::Logging
 )
 
 set(kscreenlocker_greet_bin_abs ${CMAKE_INSTALL_FULL_LIBEXECDIR}/kscreenlocker_greet)
@@ -288,12 +283,6 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfig.cmake"
 			  "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfigVersion.cmake"
 		DESTINATION "${KDE_INSTALL_CMAKEPACKAGEDIR}/KScreenLocker"
 		COMPONENT Devel)
-
-ecm_qt_install_logging_categories(
-    EXPORT KSCREENLOCKER
-    FILE kscreenlocker.categories
-    DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR}
-)
 
 install(FILES kscreenlocker.notifyrc  DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR} RENAME ksmserver.notifyrc)
 install(FILES ${screensaver_dbusXML}

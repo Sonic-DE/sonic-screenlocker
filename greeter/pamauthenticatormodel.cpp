@@ -10,8 +10,9 @@
 #include <KLocalizedString>
 
 #include "config-worker.h"
-#include "kscreenlocker_greet_logging.h"
 #include "pamauthenticatordescriptor.h"
+
+#include <Sonic/Logging/Log>
 
 using namespace Qt::StringLiterals;
 
@@ -106,7 +107,7 @@ PAMAuthenticatorModel *PAMAuthenticatorModel::create([[maybe_unused]] QQmlEngine
 void PAMAuthenticatorModel::markDefunct(PamAuthenticators::Authenticator authenticator) const
 {
     if (authenticator == PamAuthenticators::Authenticator::Regular) {
-        qCWarning(KSCREENLOCKER_GREET) << "Regular authenticator is defunct. This is unexpected and we ignore it.";
+        sonicWarning() << "Regular authenticator is defunct. This is unexpected and we ignore it.";
         return;
     }
     if (const auto descriptor = m_hash.value(authenticator)) {

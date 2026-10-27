@@ -10,16 +10,22 @@
 #include <QRect>
 #include <QString>
 
-class QLocalServer;
-class QLocalSocket;
+namespace Sonic::Ipc {
+class Connection;
+class Server;
+}
+
+//! Sonic IPC protocol version of the greeter socket; the greeter's GreeterIpcClient ships with it.
+constexpr quint16 greeterIpcProtocolVersion = 1;
 
 /**
  * @class GreeterIpcServer
- * @brief Custom IPC server for greeter communication using QLocalSocket/QLocalServer.
+ * @brief Custom IPC server for greeter communication over Sonic IPC frames.
  *
  * This class replaces both the D-Bus GreeterAdaptor and Qt Remote Objects
- * for communication between the greeter process and KSldApp. It uses
- * QLocalServer/QLocalSocket with QDataStream for reliable local IPC.
+ * for communication between the greeter process and KSldApp. Each message
+ * is one frame whose type is the message type; the payload keeps the
+ * QDataStream fields [type][id][arguments...].
  *
  * The server listens on a well-known socket name and handles messages
  * from connected greeter clients.
@@ -92,38 +98,27 @@ Q_SIGNALS:
 
 private Q_SLOTS:
     /**
-     * Handles new incoming connections.
+     * Handles a new greeter connection.
+     * @param connection The new connection.
      */
-    void handleNewConnection();
-
-    /**
-     * Handles data available on a client socket.
-     * @param clientSocket The client socket with available data.
-     */
-    void handleDataAvailable(QLocalSocket *clientSocket);
-
-    /**
-     * Handles client disconnection.
-     * @param clientSocket The disconnected client socket.
-     */
-    void handleClientDisconnected(QLocalSocket *clientSocket);
+    void handleNewConnection(Sonic::Ipc::Connection *connection);
 
 private:
     /**
-     * Processes an incoming message from a client.
-     * @param clientSocket The client socket.
-     * @param messageType The type of message.
-     * @param data The message data.
+     * Processes one frame from a client.
+     * @param connection The client connection.
+     * @param frameType The frame type, which is the message type.
+     * @param payload The message's stream bytes.
      */
-    void processMessage(QLocalSocket *clientSocket, quint32 messageType, QDataStream &data);
+    void processFrame(Sonic::Ipc::Connection *connection, quint32 frameType, const QByteArray &payload);
 
     /**
      * Sends a response to a client.
-     * @param clientSocket The client socket.
-     * @param messageType The type of message ( echoed back).
+     * @param connection The client connection.
+     * @param messageId The id of the message answered.
      * @param success Whether the operation was successful.
      */
-    void sendResponse(QLocalSocket *clientSocket, quint32 messageType, bool success);
+    void sendResponse(Sonic::Ipc::Connection *connection, quint32 messageId, bool success);
 
     /**
      * Message types for IPC communication.
@@ -138,6 +133,5 @@ private:
         MsgResponse = 100,
     };
 
-    QLocalServer *m_server = nullptr;
-    QHash<QLocalSocket *, quint32> m_clientMessageIds;
+    Sonic::Ipc::Server *m_server = nullptr;
 };

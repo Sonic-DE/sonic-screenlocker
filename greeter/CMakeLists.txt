@@ -18,14 +18,6 @@ set(kscreenlocker_authenticator_SRCS
     pamauthenticatordescriptor.cpp
 )
 
-ecm_qt_declare_logging_category(kscreenlocker_authenticator_SRCS
-    HEADER kscreenlocker_greet_logging.h
-    IDENTIFIER KSCREENLOCKER_GREET
-    CATEGORY_NAME kscreenlocker_greet
-    DESCRIPTION "KScreenLocker (greeter)"
-    EXPORT KSCREENLOCKER
-)
-
 set(kscreenlocker_greet_SRCS
     greeterapp.cpp
     greeterappearance.cpp
@@ -44,14 +36,6 @@ set(kscreenlocker_greet_SRCS
    ../logind.h
 )
 
-ecm_qt_declare_logging_category(kscreenlocker_greet_SRCS
-    HEADER kscreenlocker_logging.h
-    IDENTIFIER KSCREENLOCKER
-    CATEGORY_NAME kscreenlocker
-    DESCRIPTION "KScreenLocker"
-    EXPORT KSCREENLOCKER
-)
-
 set_source_files_properties(worker/org.kde.plasma.screenlocker.worker.xml PROPERTIES INCLUDE "result.h")
 qt_add_dbus_interface(kscreenlocker_authenticator_SRCS worker/org.kde.plasma.screenlocker.worker.xml org.kde.plasma.screenlocker.worker)
 qt_add_dbus_adaptor(kscreenlocker_authenticator_SRCS worker/org.kde.plasma.screenlocker.xml pamauthenticator.h PamAuthenticator)
@@ -66,6 +50,8 @@ target_link_libraries(kscreenlocker_authenticator
     KF6::CoreAddons
     KF6::ConfigCore
     KF6::I18n
+    # Logs through the linking binary's component; the object library declares none.
+    Sonic::Logging
 )
 
 qt_add_resources(kscreenlocker_greet_SRCS fallbacktheme.qrc)
@@ -79,6 +65,8 @@ ecm_add_qml_module(kscreenlocker_greet URI org.kde.kscreenlocker VERSION 1.0)
 target_link_libraries(kscreenlocker_greet PRIVATE
     settings
     kscreenlocker_authenticator
+    Sonic::Ipc
+    Sonic::Logging
     KF6::Package
     KF6::Crash
     KF6::ColorScheme

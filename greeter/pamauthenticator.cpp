@@ -16,10 +16,10 @@
 
 #include <KLibexec>
 
-#include "kscreenlocker_greet_logging.h"
 #include "org.kde.plasma.screenlocker.worker.h"
 #include "result.h"
 #include "screenlockeradaptor.h"
+#include <Sonic/Logging/Log>
 
 using namespace std::chrono_literals;
 using namespace Qt::StringLiterals;
@@ -147,7 +147,7 @@ void PamAuthenticator::startDeferredAuthentication()
         }
         m_authenticationRequested = false;
         if (watcher->error().isValid()) {
-            qCWarning(KSCREENLOCKER_GREET) << "PAM worker failed to authenticate:" << watcher->error().message();
+            sonicWarning() << "PAM worker failed to authenticate:" << watcher->error().message();
             setUnavailable();
             Q_EMIT failed();
             return;
@@ -166,7 +166,7 @@ void PamAuthenticator::startDeferredAuthentication()
             setUnavailable();
             return;
         default:
-            qCWarning(KSCREENLOCKER_GREET) << "Unexpected authentication result" << reply.value();
+            sonicWarning() << "Unexpected authentication result" << reply.value();
             setUnavailable();
             return;
         }
@@ -197,7 +197,7 @@ void PamAuthenticator::handleFailedAuthentication()
 void PamAuthenticator::respond(const QByteArray &response)
 {
     if (!m_promptReady || !m_inAuthenticate || !m_dbusWorker || m_pendingPrompt.type() == QDBusMessage::InvalidMessage) {
-        qCDebug(KSCREENLOCKER_GREET) << "Ignoring response without an active PAM prompt";
+        sonicDebug() << "Ignoring response without an active PAM prompt";
         return;
     }
     // Consume the pending call before emitting signals; a second submission cannot reuse it.

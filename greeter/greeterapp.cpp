@@ -14,9 +14,9 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include "virtualkeyboard.h"
 #include "wallpaper_integration.h"
 
+#include <Sonic/Logging/Log>
 #include <config-kscreenlocker.h>
 #include <iostream>
-#include <kscreenlocker_greet_logging.h>
 #include <unistd.h>
 
 // KDE
@@ -143,13 +143,13 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     m_ipcClient = new GreeterIpcClient(this);
     m_ipcClient->connectToHost();
     connect(m_ipcClient, &GreeterIpcClient::connected, this, []() {
-        qCDebug(KSCREENLOCKER_GREET) << "Connected to KSldApp via custom IPC";
+        sonicDebug() << "Connected to KSldApp via custom IPC";
     });
     connect(m_ipcClient, &GreeterIpcClient::disconnected, this, []() {
-        qCDebug(KSCREENLOCKER_GREET) << "Disconnected from KSldApp via custom IPC";
+        sonicDebug() << "Disconnected from KSldApp via custom IPC";
     });
     connect(m_ipcClient, &GreeterIpcClient::connectionError, this, [](const QString &error) {
-        qCCritical(KSCREENLOCKER_GREET) << "Custom IPC connection error:" << error;
+        sonicCritical() << "Custom IPC connection error:" << error;
     });
 
     // Connect to screenAdded to handle screens coming back after power cycle
@@ -254,7 +254,7 @@ QWindow *UnlockApp::getActiveScreen()
 PlasmaQuick::SharedQmlEngine *UnlockApp::loadWallpaperPlugin(PlasmaQuick::QuickViewSharedEngine *view)
 {
     if (!m_wallpaperPackage.isValid()) {
-        qCWarning(KSCREENLOCKER_GREET) << "Error loading the wallpaper, no valid package loaded";
+        sonicWarning() << "Error loading the wallpaper, no valid package loaded";
         return nullptr;
     }
 
@@ -277,7 +277,7 @@ void UnlockApp::setWallpaperItemProperties(PlasmaQuick::SharedQmlEngine *wallpap
 
     auto item = qobject_cast<QQuickItem *>(wallpaperObject->rootObject());
     if (!item) {
-        qCWarning(KSCREENLOCKER_GREET) << "Wallpaper needs to be a QtQuick Item";
+        sonicWarning() << "Wallpaper needs to be a QtQuick Item";
         return;
     }
     item->setParentItem(view->rootObject());
@@ -309,8 +309,8 @@ void UnlockApp::initialViewSetup()
 void UnlockApp::handleScreen(QScreen *screen)
 {
     if (screen->geometry().isNull()) {
-        qCWarning(KSCREENLOCKER_GREET) << "handleScreen: Screen" << screen->name() << "has null geometry, skipping view creation."
-                                       << "This may cause display issues after resume from power saving.";
+        sonicWarning() << "handleScreen: Screen" << screen->name() << "has null geometry, skipping view creation."
+                       << "This may cause display issues after resume from power saving.";
         // Connect to geometryChanged to retry when the screen gets valid geometry
         connect(screen, &QScreen::geometryChanged, this, [this, screen]() {
             if (!screen->geometry().isNull()) {
@@ -350,7 +350,7 @@ void UnlockApp::handleScreen(QScreen *screen)
             m_views.removeOne(qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
         });
     } else {
-        qCWarning(KSCREENLOCKER_GREET) << "createViewForScreen returned nullptr for screen:" << screen->name();
+        sonicWarning() << "createViewForScreen returned nullptr for screen:" << screen->name();
     }
 }
 
@@ -392,7 +392,7 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
             // by destructors or by themselves once they notice we are gone.
             qApp->quit();
         } else {
-            qCWarning(KSCREENLOCKER_GREET) << "Greeter tried to quit without being unlocked";
+            sonicWarning() << "Greeter tried to quit without being unlocked";
         }
     });
 
@@ -447,19 +447,19 @@ PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scre
     if (view->status() != QQmlComponent::Ready) {
         static const QUrl fallbackUrl(QUrl(QStringLiteral("qrc:/fallbacktheme/LockScreen.qml")));
 
-        qCWarning(KSCREENLOCKER_GREET) << "Failed to load lockscreen QML, falling back to built-in locker";
+        sonicWarning() << "Failed to load lockscreen QML, falling back to built-in locker";
         for (const auto &error : view->errors()) {
-            qCWarning(KSCREENLOCKER_GREET) << error;
+            sonicWarning() << error;
         }
 
         m_mainQmlPath = fallbackUrl;
         view->setSource(fallbackUrl);
 
         if (view->status() != QQmlComponent::Ready) {
-            qCWarning(KSCREENLOCKER_GREET) << "Failed to load the fallback lockscreen QML, something went "
-                                              "really wrong! Terminating...";
+            sonicWarning() << "Failed to load the fallback lockscreen QML, something went "
+                              "really wrong! Terminating...";
             for (const auto &error : view->errors()) {
-                qCWarning(KSCREENLOCKER_GREET) << error;
+                sonicWarning() << error;
             }
             std::terminate();
         }
@@ -508,7 +508,7 @@ void UnlockApp::markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view)
         QQmlProperty showProperty(view->rootObject(), QStringLiteral("viewVisible"));
         showProperty.write(true);
     } else {
-        qCWarning(KSCREENLOCKER_GREET) << "  rootObject is NULL!";
+        sonicWarning() << "  rootObject is NULL!";
     }
     // random state update, actually rather required on init only
     QMetaObject::invokeMethod(this, "getFocus", Qt::QueuedConnection);
@@ -558,11 +558,11 @@ void UnlockApp::getFocus()
 void UnlockApp::registerViewWithKsld(PlasmaQuick::QuickViewSharedEngine *view)
 {
     if (!view) {
-        qCWarning(KSCREENLOCKER_GREET) << "registerViewWithKsld: view is null, skipping";
+        sonicWarning() << "registerViewWithKsld: view is null, skipping";
         return;
     }
     if (!m_ipcClient) {
-        qCWarning(KSCREENLOCKER_GREET) << "registerViewWithKsld: IPC client not available, skipping registration for winId=" << view->winId();
+        sonicWarning() << "registerViewWithKsld: IPC client not available, skipping registration for winId=" << view->winId();
         return;
     }
     QString screenName = view->screen() ? view->screen()->name() : QString();
@@ -631,7 +631,7 @@ void UnlockApp::suspendToDisk()
 
 void UnlockApp::setTesting(bool enable)
 {
-    qCDebug(KSCREENLOCKER_GREET) << "Testing mode enabled:" << enable;
+    sonicDebug() << "Testing mode enabled:" << enable;
 
     m_testing = enable;
     if (m_views.isEmpty()) {
@@ -659,7 +659,7 @@ void UnlockApp::setShell(const QString &shell)
     }
 
     if (!verifyPackageApi(package)) {
-        qCWarning(KSCREENLOCKER_GREET) << "Lockscreen QML outdated, falling back to default";
+        sonicWarning() << "Lockscreen QML outdated, falling back to default";
         package.setPath(s_sonicSession ? QStringLiteral("org.sonicde.desktop") : QStringLiteral("org.kde.plasma.desktop"));
     }
 

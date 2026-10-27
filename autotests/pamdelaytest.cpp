@@ -5,10 +5,12 @@
 #include <QDBusMessage>
 #include <QDBusPendingReply>
 #include <QDBusServer>
+#include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <optional>
 
@@ -251,9 +253,11 @@ void PamDelayTest::invalidWorkerInput()
     QFETCH(QByteArray, input);
     QFETCH(bool, unreadableStdin);
     QProcess worker;
+    // The worker logs to its own per-service file under the state directory.
+    QTemporaryDir stateDir;
+    QVERIFY(stateDir.isValid());
     auto environment = QProcessEnvironment::systemEnvironment();
-    environment.insert(QStringLiteral("QT_LOGGING_RULES"), QStringLiteral("kscreenlocker.worker*.warning=true"));
-    environment.insert(QStringLiteral("QT_MESSAGE_PATTERN"), QStringLiteral("%{category}: %{message}"));
+    environment.insert(QStringLiteral("XDG_STATE_HOME"), stateDir.path());
     worker.setProcessEnvironment(environment);
     worker.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/kscreenlocker_worker"));
     worker.setArguments({QStringLiteral("failure_delay_test"), QStringLiteral("test_user")});
@@ -278,9 +282,11 @@ void PamDelayTest::invalidWorkerInput()
     QVERIFY(worker.waitForFinished(2000));
     QCOMPARE(worker.exitStatus(), QProcess::NormalExit);
     QCOMPARE(worker.exitCode(), 1);
-    const auto diagnostics = worker.readAllStandardError();
-    QVERIFY(diagnostics.contains("Failed to read"));
-    QVERIFY(diagnostics.contains("kscreenlocker.worker.pam-failure_delay_test:"));
+    // Named after the PAM service from argv, so concurrent workers stay apart.
+    QFile log(stateDir.filePath(QStringLiteral("sonic/kscreenlocker_worker-failure_delay_test.log")));
+    QVERIFY2(log.open(QIODevice::ReadOnly), qPrintable(log.fileName()));
+    const auto diagnostics = log.readAll();
+    QVERIFY2(diagnostics.contains("Failed to read"), diagnostics.constData());
 }
 
 void PamDelayTest::cancelQueuedRequestBeforeReady()

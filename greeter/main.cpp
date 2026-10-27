@@ -15,17 +15,50 @@ SPDX-License-Identifier: GPL-2.0-or-later
 #include <signal.h>
 
 #include "greeterapp.h"
-#include "messagehandler.h"
 
 #include <config-kscreenlocker.h>
-#include <kscreenlocker_greet_logging.h>
 #include <prctls.h>
 
 #include <KSignalHandler>
 
+#include <Sonic/Logging/Logging>
+
+#include <QFile>
+#include <QStandardPaths>
+
+#include <sys/stat.h>
+#include <unistd.h>
+
+SONIC_LOGGING_COMPONENT("org.sonicde.screenlocker.greeter")
+
+// The old shared screenlocker log isn't written any more, so this only removes anything the first time.
+static void removeOldLog()
+{
+    struct stat out{};
+    struct stat err{};
+    const bool haveOut = fstat(STDOUT_FILENO, &out) == 0;
+    const bool haveErr = fstat(STDERR_FILENO, &err) == 0;
+    const QString log = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + QStringLiteral("/sonic/screenlocker.log");
+    for (const QString &path : {log, QString(log + QStringLiteral(".last"))}) {
+        struct stat st{};
+        if (lstat(QFile::encodeName(path).constData(), &st) != 0) {
+            continue;
+        }
+        if ((haveOut && st.st_dev == out.st_dev && st.st_ino == out.st_ino) || (haveErr && st.st_dev == err.st_dev && st.st_ino == err.st_ino)) {
+            sonicInfo() << "keeping" << path << "because it is this process's output";
+            continue;
+        }
+        if (QFile::remove(path)) {
+            sonicInfo() << "removed the old log file" << path;
+        } else {
+            sonicWarning() << "cannot remove the old log file" << path;
+        }
+    }
+}
+
 static void signalHandler(int signum)
 {
-    qCDebug(KSCREENLOCKER_GREET) << "Greeter received signal" << signum;
+    sonicDebug() << "Greeter received signal" << signum;
 
     ScreenLocker::UnlockApp *instance = qobject_cast<ScreenLocker::UnlockApp *>(QCoreApplication::instance());
 
@@ -39,19 +72,14 @@ static void signalHandler(int signum)
         // return exit code 1 to indicate that a valid password was not entered,
         // to prevent circumventing the password input by sending a SIGTERM
 
-        qCDebug(KSCREENLOCKER_GREET) << "Greeter received SIGTERM. Will exit with error.";
+        sonicDebug() << "Greeter received SIGTERM. Will exit with error.";
         instance->exit(1);
         break;
     case SIGUSR1:
-        qCDebug(KSCREENLOCKER_GREET) << "Greeter received SIGUSR1. Will lock immediately.";
+        sonicDebug() << "Greeter received SIGUSR1. Will lock immediately.";
         instance->lockImmediately();
         break;
     }
-}
-
-static void GreeterMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
-{
-    messageHandler(type, QStringLiteral("KSCREENLOCKER_GREET"), msg);
 }
 
 int main(int argc, char *argv[])
@@ -63,13 +91,15 @@ int main(int argc, char *argv[])
     pthread_sigmask(SIG_BLOCK, &blockedSignals, NULL);
 
     // disable ptrace on the greeter unless debugging is enabled
-    if (auto dumpable = KSCREENLOCKER_GREET().isDebugEnabled(); !PRCTLs::setDumpable(dumpable)) {
-        qCWarning(KSCREENLOCKER_GREET) << "Failed to switch ptrace on the greeter to" << (dumpable ? "enabled" : "disabled");
+    if (auto dumpable = sonicLoggingComponent().isDebugEnabled(); !PRCTLs::setDumpable(dumpable)) {
+        sonicWarning() << "Failed to switch ptrace on the greeter to" << (dumpable ? "enabled" : "disabled");
     }
 
-    qInstallMessageHandler(GreeterMessageHandler);
+    // Logs to ~/.local/state/sonic/kscreenlocker_greet.log.
+    Sonic::Logging::install();
+    removeOldLog();
 
-    qCDebug(KSCREENLOCKER_GREET) << "Greeter is starting up.";
+    sonicDebug() << "Greeter is starting up.";
 
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kscreenlocker_greet"));
 
@@ -139,7 +169,7 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     if (parser.isSet(testingOption)) {
-        qCDebug(KSCREENLOCKER_GREET) << "Greeter is running in testing mode";
+        sonicDebug() << "Greeter is running in testing mode";
 
         app.setTesting(true);
         app.setImmediateLock(true);
@@ -152,7 +182,7 @@ int main(int argc, char *argv[])
 
         // allow ptrace if testing is enabled
         if (!PRCTLs::setDumpable(true)) {
-            qCWarning(KSCREENLOCKER_GREET) << "Failed to enable ptrace on the testing greeter";
+            sonicWarning() << "Failed to enable ptrace on the testing greeter";
         }
     } else {
         app.setImmediateLock(parser.isSet(immediateLockOption));

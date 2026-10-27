@@ -18,10 +18,13 @@
 
 #include "config-kscreenlocker.h"
 #include "config-worker.h"
-#include "debug.h"
 #include "org.kde.plasma.screenlocker.h"
 #include "prctls.h"
 #include "result.h"
+
+#include <Sonic/Logging/Logging>
+
+SONIC_LOGGING_COMPONENT("org.sonicde.screenlocker.worker")
 
 using namespace std::chrono_literals;
 using namespace Qt::StringLiterals;
@@ -40,9 +43,6 @@ struct default_delete<pam_handle_t> {
 
 namespace {
 
-// this is a non-const pointer, but also needs to be; it's effectively dependant on argv input.
-auto WORKER = DEFAULT_WORKER; // NOLINT
-
 template<typename Output, typename Input>
 [[nodiscard]] Output narrow(Input i)
 {
@@ -56,41 +56,11 @@ template<typename Output, typename Input>
     return o;
 }
 
-void setUpWorkerLogging(const QString &service)
-{
-    // Switch our QLoggingCategory to the correct service. This makes it clearer which PAM service we are working with.
-    //
-    // QLoggingCategory keeps this pointer: the name must outlive the category, not just this helper call.
-    // qstrdup calls new char[], so keep array ownership and destroy the category before the name.
-    static const std::unique_ptr<char[]> serviceName(qstrdup(u"kscreenlocker.worker.pam-%1"_s.arg(service).toUtf8().constData()));
-    static const QLoggingCategory category(serviceName.get(), [] {
-        // Select the least severe enabled level; higher severities are enabled too.
-        // QtMsgType's numeric order is not severity order, so check explicitly.
-        if (DEFAULT_WORKER().isDebugEnabled()) {
-            return QtDebugMsg;
-        }
-        if (DEFAULT_WORKER().isInfoEnabled()) {
-            return QtInfoMsg;
-        }
-        if (DEFAULT_WORKER().isWarningEnabled()) {
-            return QtWarningMsg;
-        }
-        if (DEFAULT_WORKER().isCriticalEnabled()) {
-            return QtCriticalMsg;
-        }
-        return QtFatalMsg;
-    }());
-    WORKER = []() -> const QLoggingCategory & {
-        // return the reference to our function local static
-        return category;
-    };
-}
-
 [[nodiscard]] std::string readAddressFromStdin()
 {
     std::string address;
     if (!std::getline(std::cin, address)) {
-        qCWarning(WORKER) << "Failed to read worker D-Bus address from stdin.";
+        sonicWarning() << "Failed to read worker D-Bus address from stdin.";
         return {};
     }
     return address;
@@ -142,13 +112,13 @@ public:
 public Q_SLOTS:
     [[nodiscard]] int Authenticate()
     {
-        qCDebug(WORKER) << "Proxy: Authenticate called";
+        sonicDebug() << "Proxy: Authenticate called";
         return m_worker.authenticate();
     }
 
     Q_NOREPLY void Cancel()
     {
-        qCDebug(WORKER) << "Proxy: Cancel called";
+        sonicDebug() << "Proxy: Cancel called";
         qApp->quit();
     }
 
@@ -161,11 +131,11 @@ void fail_delay(int retval, unsigned usec_delay, void *appdata_ptr)
 {
     auto *worker = reinterpret_cast<Worker *>(appdata_ptr); // Refer the pam_conv (@sa m_conv) structure for info on appdata_ptr
     if (!worker) {
-        qCFatal(WORKER) << "[PAM worker] appdata_ptr not convertible to a valid Worker! Cannot apply fail delay";
+        sonicFatal() << "[PAM worker] appdata_ptr not convertible to a valid Worker! Cannot apply fail delay";
         return;
     }
     if (retval == PAM_SUCCESS) {
-        qCDebug(WORKER) << "[PAM worker] Fail delay function was called, but authentication result was a success!";
+        sonicDebug() << "[PAM worker] Fail delay function was called, but authentication result was a success!";
         return;
     }
     worker->startFailedDelay(usec_delay);
@@ -178,7 +148,7 @@ int Worker::converse(int n, const struct pam_message **msg, struct pam_response 
     auto c = static_cast<Worker *>(data);
 
     if (!resp) {
-        qCWarning(WORKER) << "[PAM worker] Converse called with null resp pointer";
+        sonicWarning() << "[PAM worker] Converse called with null resp pointer";
         return PAM_BUF_ERR;
     }
 
@@ -202,11 +172,7 @@ int Worker::converse(int n, const struct pam_message **msg, struct pam_response 
         case PAM_PROMPT_ECHO_ON:
             const QString prompt = QString::fromLocal8Bit(pamMessage->msg);
 
-            qCDebug(WORKER,
-                    "[PAM worker %s] Message: %s: %s",
-                    qUtf8Printable(c->m_service),
-                    (isSecret ? "Echo-off prompt" : "Echo-on prompt"),
-                    qUtf8Printable(prompt));
+            sonicDebug().noquote() << "[PAM worker" << c->m_service + u"] Message:"_s << (isSecret ? "Echo-off prompt:" : "Echo-on prompt:") << prompt;
 
             const QString responseString = [&] {
                 if (isSecret) {
@@ -229,19 +195,19 @@ int Worker::converse(int n, const struct pam_message **msg, struct pam_response 
         }
         case PAM_ERROR_MSG: {
             const QString error = QString::fromLocal8Bit(pamMessage->msg);
-            qCDebug(WORKER, "[PAM worker %s] Message: Error message: %s", qUtf8Printable(c->m_service), qUtf8Printable(error));
+            sonicDebug().noquote() << "[PAM worker" << c->m_service + u"] Message: Error message:"_s << error;
             c->m_screenlocker->ErrorMessage(error);
             break;
         }
         case PAM_TEXT_INFO: {
             // if there's only the info message, let's predict the prompts too
             const QString info = QString::fromLocal8Bit(pamMessage->msg);
-            qCDebug(WORKER, "[PAM worker %s] Message: Info message: %s", qUtf8Printable(c->m_service), qUtf8Printable(info));
+            sonicDebug().noquote() << "[PAM worker" << c->m_service + u"] Message: Info message:"_s << info;
             c->m_screenlocker->InfoMessage(info);
             break;
         }
         default:
-            qCDebug(WORKER, "[PAM worker %s] Message: Unhandled message type: %d", qUtf8Printable(c->m_service), pamMessage->msg_style);
+            sonicDebug().noquote() << "[PAM worker" << c->m_service + u"] Message: Unhandled message type:"_s << pamMessage->msg_style;
             break;
         }
     }
@@ -262,24 +228,21 @@ Worker::Worker(const QString &service, const QString &user, OrgKdePlasmaScreenlo
 
         if (m_result != PAM_SUCCESS) {
             m_available = false;
-            qCWarning(WORKER,
-                      "[PAM worker %s] start: error starting, result code: %d (%s)",
-                      qUtf8Printable(service),
-                      m_result,
-                      pam_strerror(handle.get(), m_result));
+            sonicWarning().noquote() << "[PAM worker" << service + u"] start: error starting, result code:"_s << m_result
+                                     << u"(%1)"_s.arg(QString::fromLocal8Bit(pam_strerror(handle.get(), m_result)));
             return nullptr;
         }
 
 #if KSCREENLOCKER_HAVE_PAM_FAIL_DELAY
         const int delayResult = pam_set_item(handle.get(), PAM_FAIL_DELAY, reinterpret_cast<void *>(fail_delay));
         if (delayResult != PAM_SUCCESS) {
-            qCWarning(WORKER) << "Could not install PAM failure-delay callback" << delayResult;
+            sonicWarning() << "Could not install PAM failure-delay callback" << delayResult;
         }
 #else
         Q_UNUSED(fail_delay);
 #endif
 
-        qCDebug(WORKER, "[PAM worker %s] start: successfully started", qUtf8Printable(service));
+        sonicDebug().noquote() << "[PAM worker" << service + u"] start: successfully started"_s;
 
         return handle;
     }())
@@ -289,11 +252,11 @@ Worker::Worker(const QString &service, const QString &user, OrgKdePlasmaScreenlo
 WorkerResult::Type Worker::authenticate()
 {
     if (m_inAuthenticate) {
-        qCDebug(WORKER, "[PAM worker %s] Authentication is already in progress", qUtf8Printable(m_service));
+        sonicDebug().noquote() << "[PAM worker" << m_service + u"] Authentication is already in progress"_s;
         return WorkerResult::Type::Failure;
     }
     if (!m_available || !m_handle || m_result != PAM_SUCCESS) {
-        qCDebug(WORKER, "[PAM worker %s] PAM service is not available", qUtf8Printable(m_service));
+        sonicDebug().noquote() << "[PAM worker" << m_service + u"] PAM service is not available"_s;
         return WorkerResult::Type::Unavailable;
     }
 
@@ -308,15 +271,16 @@ WorkerResult::Type Worker::authenticate()
         Q_EMIT inAuthenticateChanged(m_inAuthenticate);
     });
 
-    qCDebug(WORKER, "[PAM worker %s] Authenticate: Starting authentication", qUtf8Printable(m_service));
+    sonicDebug().noquote() << "[PAM worker" << m_service + u"] Authenticate: Starting authentication"_s;
 
     QElapsedTimer timer;
     timer.start();
 
     int rc = pam_authenticate(m_handle.get(), 0); // PAM_SILENT);
-    qCDebug(WORKER, "[PAM worker %s] Authenticate: Authentication done, result code: %d (%s)", qUtf8Printable(m_service), rc, pam_strerror(m_handle.get(), rc));
+    sonicDebug().noquote() << "[PAM worker" << m_service + u"] Authenticate: Authentication done, result code:"_s << rc
+                           << u"(%1)"_s.arg(QString::fromLocal8Bit(pam_strerror(m_handle.get(), rc)));
 
-    qCWarning(WORKER) << timer.elapsed() << "ms elapsed during pam_authenticate call for service" << qUtf8Printable(m_service) << "with result code" << rc;
+    sonicWarning() << timer.elapsed() << "ms elapsed during pam_authenticate call for service" << qUtf8Printable(m_service) << "with result code" << rc;
 
     if (rc == PAM_SUCCESS) {
         pam_setcred(m_handle.get(), PAM_REFRESH_CRED);
@@ -330,7 +294,7 @@ WorkerResult::Type Worker::authenticate()
         constexpr auto tooQuick = 250ms;
         // Unless this error was returned suspiciously fast. Then it probably was an actual problem.
         if (timer.durationElapsed() <= tooQuick) {
-            qCWarning(WORKER) << "Unexpectedly short auth error on fingerprint reader" << timer.durationElapsed();
+            sonicWarning() << "Unexpectedly short auth error on fingerprint reader" << timer.durationElapsed();
             m_available = false;
             return WorkerResult::Type::Unavailable;
         }
@@ -357,47 +321,48 @@ int main(int argc, char *argv[])
 {
     const auto parentPid = getppid();
     if (parentPid == 1) {
-        qCWarning(WORKER) << "Worker has no greeter parent, exiting.";
+        sonicWarning() << "Worker has no greeter parent, exiting.";
         return 1;
     }
     const auto parentDeathSignal = PRCTLs::dieWithParent();
     if (!parentDeathSignal) {
-        qCWarning(WORKER) << "Failed to set parent-death signal, errno:" << parentDeathSignal.error();
+        sonicWarning() << "Failed to set parent-death signal, errno:" << parentDeathSignal.error();
         return 1;
     }
     if (getppid() != parentPid) {
-        qCWarning(WORKER) << "Greeter parent changed during worker startup, exiting.";
+        sonicWarning() << "Greeter parent changed during worker startup, exiting.";
         return 1;
     }
 
     // Moving PAM into a subprocess must not undo the greeter's password/ptrace protection.
     const auto dumpProtection = PRCTLs::setDumpable(false);
     if (!dumpProtection) {
-        qCWarning(WORKER) << "Failed to disable worker dump/ptrace access, errno:" << dumpProtection.error();
+        sonicWarning() << "Failed to disable worker dump/ptrace access, errno:" << dumpProtection.error();
         return 1;
     }
-    if (auto dumpable = WORKER().isDebugEnabled(); !PRCTLs::setDumpable(dumpable)) {
-        qCWarning(WORKER) << "Failed to set dumpable flag on the worker" << (dumpable ? "enabled" : "disabled");
+    if (auto dumpable = sonicLoggingComponent().isDebugEnabled(); !PRCTLs::setDumpable(dumpable)) {
+        sonicWarning() << "Failed to set dumpable flag on the worker" << (dumpable ? "enabled" : "disabled");
         // We'll continue but it is a bit unexpected.
     }
 
     QCoreApplication app(argc, argv);
 
-    qCDebug(WORKER) << "Worker is starting up.";
+    sonicDebug() << "Worker is starting up.";
 
     constexpr auto expectedArguments = 3; // [binary, pam-service-name, username]
     if (app.arguments().size() < expectedArguments) {
-        qCWarning(WORKER) << "Worker requires service and username arguments. Also, don't call this manually.";
+        sonicWarning() << "Worker requires service and username arguments. Also, don't call this manually.";
         return 1;
     }
     auto service = app.arguments().at(1); // the PAM service name (e.g. kde-fingerprint)
     auto user = app.arguments().at(2);
 
-    setUpWorkerLogging(service);
+    // One log per PAM service, so concurrent workers (password, fingerprint, ...) stay apart.
+    Sonic::Logging::install({.binaryName = u"kscreenlocker_worker-%1"_s.arg(service)});
 
     auto address = readAddressFromStdin();
     if (address.empty()) {
-        qCWarning(WORKER) << "Failed to read D-Bus address from stdin, exiting.";
+        sonicWarning() << "Failed to read D-Bus address from stdin, exiting.";
         return 1;
     }
 
@@ -412,10 +377,10 @@ int main(int argc, char *argv[])
     // explicit "go" call.
     screenlocker.Ping(u"Hello from worker!"_s);
 
-    qCDebug(WORKER) << "Worker is now running, waiting for D-Bus calls.";
+    sonicDebug() << "Worker is now running, waiting for D-Bus calls.";
 
     auto ret = app.exec();
-    qCDebug(WORKER) << "Worker is exiting with code" << ret;
+    sonicDebug() << "Worker is exiting with code" << ret;
     return ret;
 }
 

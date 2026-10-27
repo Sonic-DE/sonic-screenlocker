@@ -10,7 +10,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 */
 
 #include "abstractlocker.h"
-#include "kscreenlocker_logging.h"
+#include <Sonic/Logging/Log>
 
 #include <QApplication>
 #include <QDBusConnection>
@@ -26,7 +26,7 @@ BackgroundWindow::BackgroundWindow(AbstractLocker *lock)
     : QRasterWindow()
     , m_lock(lock)
 {
-    qCDebug(KSCREENLOCKER) << "Creating BackgroundWindow";
+    sonicDebug() << "Creating BackgroundWindow";
     setFlags(Qt::X11BypassWindowManagerHint | Qt::FramelessWindowHint);
     setProperty("org_kde_ksld_emergency", true);
 }
@@ -35,7 +35,7 @@ BackgroundWindow::~BackgroundWindow() = default;
 
 void BackgroundWindow::paintEvent(QPaintEvent *)
 {
-    qCDebug(KSCREENLOCKER) << "Painting BackgroundWindow";
+    sonicDebug() << "Painting BackgroundWindow";
     QPainter p(this);
     p.fillRect(0, 0, width(), height(), Qt::black);
     if (m_greeterFailure) {
@@ -92,7 +92,7 @@ void BackgroundWindow::paintEvent(QPaintEvent *)
 
 void BackgroundWindow::emergencyShow()
 {
-    qCDebug(KSCREENLOCKER) << "BackgroundWindow::emergencyShow() called";
+    sonicDebug() << "BackgroundWindow::emergencyShow() called";
     m_greeterFailure = true;
     update();
     show();

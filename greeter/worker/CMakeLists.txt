@@ -47,13 +47,7 @@ target_link_libraries(kscreenlocker_worker
         Qt::Core
         Qt::DBus
         ${PAM_LIBRARIES}
+        Sonic::Logging
 )
 target_include_directories(kscreenlocker_worker PRIVATE ${PAM_INCLUDE_DIR})
-ecm_qt_declare_logging_category(kscreenlocker_worker
-    HEADER debug.h
-    IDENTIFIER DEFAULT_WORKER
-    CATEGORY_NAME kscreenlocker.worker
-    DESCRIPTION "KScreenLocker Worker"
-    EXPORT KSCREENLOCKER_WORKER
-)
 install(TARGETS kscreenlocker_worker DESTINATION ${KDE_INSTALL_LIBEXECDIR})
