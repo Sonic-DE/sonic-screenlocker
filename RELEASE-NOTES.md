@@ -2,11 +2,8 @@
 
 Sonic Screenlocker keeps your SonicDE session safe when you step away, locking the screen and showing the unlock screen where you sign back in.
 
-## Unreleased
+## 6.8.2 (2026-11-10)
 
-- The unlock screen now uses SonicDE's own on-screen keyboard, and the lock screen no longer covers it up.
-- The unlock screen now follows your chosen theme for a consistent look.
-- The on-screen keyboard's language list now scrolls properly, and its settings button is hidden on the unlock screen, where it can't be used.
 - The screen locker now talks to its unlock screen through SonicDE's new fast, robust communication framework.
 - The screen locker, unlock screen and password checker now log through SonicDE's new unified logging system, with a separate log for each sign-in method (password, fingerprint, smart card and so on).
 - The screen locker now consistently identifies itself with SonicDE names.
