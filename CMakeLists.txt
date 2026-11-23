@@ -132,6 +132,13 @@ endmacro(define_pam_service)
 
 define_pam_service(KScreenLocker)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    # FreeBSD's pam_unix only checks passwords as root, so the PAM service asks the setuid helper.
+    set(UNIX_SELFAUTH_HELPER "/usr/local/libexec/unix-selfauth-helper" CACHE FILEPATH "Helper that checks the user's own password")
+    configure_file(pam/freebsd/kde.pam.in ${CMAKE_CURRENT_BINARY_DIR}/kde.pam @ONLY)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/kde.pam DESTINATION ${KDE_INSTALL_SYSCONFDIR}/pam.d RENAME $CACHE{KSCREENLOCKER_PAM_SERVICE})
+endif()
+
 set(CMAKE_EXTRA_INCLUDE_FILES sys/socket.h)
 
 configure_file(config-unix.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-unix.h )

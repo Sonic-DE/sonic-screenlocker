@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Joseph Crowell <joseph.w.crowell@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Screen locker PAM service for FreeBSD
+
+auth		sufficient	pam_exec.so	return_prog_exit_status expose_authtok @UNIX_SELFAUTH_HELPER@
+auth		include		system
+account		include		system
