@@ -217,7 +217,8 @@ qt_add_resources(greeterAppearanceTest appearance_test_resources
 qt_add_resources(greeterAppearanceTest appearance_controls_config PREFIX "/" BASE "${CMAKE_SOURCE_DIR}/greeter"
     FILES "${CMAKE_SOURCE_DIR}/greeter/qtquickcontrols2.conf")
 if(XVFB_RUN_EXECUTABLE)
-    add_test(NAME ksmserver-greeterAppearanceTest COMMAND ${XVFB_RUN_EXECUTABLE} -a -s "-screen 0 1000x700x24"
+    # Xvfb refuses a screen smaller than its default 1280x1024 CRTC; the test window sets its own size
+    add_test(NAME ksmserver-greeterAppearanceTest COMMAND ${XVFB_RUN_EXECUTABLE} -a -s "-screen 0 1280x1024x24"
         ${CMAKE_COMMAND} -E env --unset=QT_QUICK_BACKEND QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1
         $<TARGET_FILE:greeterAppearanceTest>)
 else()
